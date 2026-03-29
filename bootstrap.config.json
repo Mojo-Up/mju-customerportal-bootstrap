@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "_comment": "Fill in your project values. The Initialisation Agent reads this file to configure the entire codebase.",
+  "projectName": "",
+  "projectNameLower": "",
+  "orgScope": "",
+  "domain": "",
+  "entraCiamTenant": "",
+  "entraCiamTenantId": "",
+  "entraCiamClientId": "",
+  "entraWorkforceTenantId": "",
+  "entraWorkforceClientId": "",
+  "acrName": "",
+  "resourceGroup": "",
+  "brandPrimary": "#0d9488",
+  "brandAccent": "#f97316",
+  "productName": "",
+  "environments": ["dev", "production"],
+  "branchStrategy": "trunk-based",
+  "features": {
+    "mcp": true,
+    "stripe": true,
+    "supportTickets": true,
+    "downloads": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environment": { "value": "prod" },
+    "entraExternalIdTenant": { "value": "{{ENTRA_CIAM_TENANT}}" },
+    "entraExternalIdTenantId": { "value": "REPLACE_WITH_TENANT_ID" },
+    "entraExternalIdClientId": { "value": "REPLACE_WITH_CLIENT_ID" },
+    "dbPassword": { "value": "REPLACE_WITH_DB_PASSWORD" },
+    "stripeSecretKey": { "value": "REPLACE_WITH_STRIPE_SECRET_KEY" },
+    "stripeWebhookSecret": { "value": "REPLACE_WITH_STRIPE_WEBHOOK_SECRET" },
+    "activationHmacKey": { "value": "REPLACE_WITH_HMAC_KEY" }
+  }
+}

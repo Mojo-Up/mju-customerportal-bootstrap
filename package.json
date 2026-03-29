@@ -1,0 +1,41 @@
+{
+  "name": "{{PROJECT_NAME_LOWER}}-portal",
+  "private": true,
+  "version": "0.1.0",
+  "description": "{{PROJECT_NAME}} Customer Portal & Subscription API",
+  "scripts": {
+    "dev": "pnpm -r --parallel run dev",
+    "dev:api": "pnpm --filter @{{ORG_SCOPE}}/api dev",
+    "dev:portal": "pnpm --filter @{{ORG_SCOPE}}/portal dev",
+    "build": "pnpm -r run build",
+    "build:api": "pnpm --filter @{{ORG_SCOPE}}/api build",
+    "build:portal": "pnpm --filter @{{ORG_SCOPE}}/portal build",
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "db:generate": "pnpm --filter @{{ORG_SCOPE}}/api db:generate",
+    "db:migrate": "pnpm --filter @{{ORG_SCOPE}}/api db:migrate",
+    "db:push": "pnpm --filter @{{ORG_SCOPE}}/api db:push",
+    "db:studio": "pnpm --filter @{{ORG_SCOPE}}/api db:studio",
+    "clean": "pnpm -r run clean && rm -rf node_modules"
+  },
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild"
+    ],
+    "overrides": {
+      "effect": ">=3.20.0",
+      "path-to-regexp": ">=8.4.0"
+    }
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

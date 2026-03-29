@@ -1,0 +1,336 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Organisations ──────────────────────────────────────────────────────────
+
+model Organisation {
+  id               String            @id @default(uuid()) @db.Uuid
+  customerId       Int               @unique @default(autoincrement()) @map("customer_id")
+  name             String            @db.VarChar(200)
+  stripeCustomerId String?           @unique @map("stripe_customer_id") @db.VarChar(255)
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
+
+  memberships      OrgMembership[]
+  invitations      OrgInvitation[]
+  subscriptions    Subscription[]
+  licences         Licence[]
+  tickets          SupportTicket[]
+  downloadLogs     DownloadLog[]
+
+  @@map("organisations")
+}
+
+// ─── Products ───────────────────────────────────────────────────────────────
+
+model Product {
+  id          String          @id @default(uuid()) @db.Uuid
+  name        String          @unique @db.VarChar(200)
+  slug        String          @unique @db.VarChar(200)
+  description String          @db.Text
+  iconUrl     String?         @map("icon_url") @db.VarChar(500)
+  logoUrl     String?         @map("logo_url") @db.VarChar(500)
+  isActive    Boolean         @default(true) @map("is_active")
+  features    Json?           // Flexible JSON for feature list display
+  sortOrder   Int             @default(0) @map("sort_order")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  pricingPlans ProductPricingPlan[]
+  subscriptions Subscription[]
+  licences      Licence[]
+  downloads     FileDownload[]
+  tickets       SupportTicket[]
+
+  @@map("products")
+}
+
+model ProductPricingPlan {
+  id            String   @id @default(uuid()) @db.Uuid
+  productId     String   @map("product_id") @db.Uuid
+  name          String   @db.VarChar(100) // e.g. "Monthly", "Annual"
+  stripePriceId String   @map("stripe_price_id") @db.VarChar(255)
+  interval      String   @db.VarChar(20) // "month" | "year"
+  price         Int      // price in cents
+  currency      String   @default("aud") @db.VarChar(3)
+  features      Json?    // JSON array of feature strings for display
+  isActive      Boolean  @default(true) @map("is_active")
+  sortOrder     Int      @default(0) @map("sort_order")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  product       Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_pricing_plans")
+}
+
+// ─── Users ──────────────────────────────────────────────────────────────────
+
+model User {
+  id             String          @id @default(uuid()) @db.Uuid
+  email          String          @unique @db.VarChar(320)
+  name           String          @db.VarChar(200)
+  entraObjectId  String?         @unique @map("entra_object_id") @db.VarChar(255)
+  isStaff        Boolean         @default(false) @map("is_staff")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  memberships    OrgMembership[]
+  invitedMembers OrgMembership[] @relation("InvitedBy")
+  tickets        SupportTicket[]
+  messages       TicketMessage[]
+  downloadLogs   DownloadLog[]
+
+  @@map("users")
+}
+
+// ─── Organisation Memberships ───────────────────────────────────────────────
+
+enum OrgRole {
+  owner
+  admin
+  billing
+  technical
+}
+
+model OrgMembership {
+  userId     String        @map("user_id") @db.Uuid
+  orgId      String        @map("org_id") @db.Uuid
+  role       OrgRole
+  invitedBy  String?       @map("invited_by") @db.Uuid
+  acceptedAt DateTime?     @map("accepted_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org        Organisation  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  inviter    User?         @relation("InvitedBy", fields: [invitedBy], references: [id])
+
+  @@id([userId, orgId])
+  @@map("org_memberships")
+}
+
+// ─── Organisation Invitations ───────────────────────────────────────────────
+
+model OrgInvitation {
+  id         String        @id @default(uuid()) @db.Uuid
+  orgId      String        @map("org_id") @db.Uuid
+  email      String        @db.VarChar(320)
+  role       OrgRole
+  token      String        @unique @default(uuid()) @db.Uuid
+  expiresAt  DateTime      @map("expires_at")
+  acceptedAt DateTime?     @map("accepted_at")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  org        Organisation  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([email])
+  @@index([token])
+  @@map("org_invitations")
+}
+
+// ─── Subscriptions ──────────────────────────────────────────────────────────
+
+enum SubscriptionPlan {
+  monthly
+  annual
+}
+
+enum SubscriptionStatus {
+  active
+  expired
+  cancelled
+  past_due @map("past_due")
+}
+
+model Subscription {
+  id                    String             @id @db.VarChar(50)  // e.g. SUB-xxxx (URL-safe)
+  orgId                 String             @map("org_id") @db.Uuid
+  productId             String             @map("product_id") @db.Uuid
+  plan                  SubscriptionPlan
+  status                SubscriptionStatus @default(active)
+  startDate             DateTime           @map("start_date")
+  endDate               DateTime           @map("end_date")
+  stripeSubscriptionId  String?            @unique @map("stripe_subscription_id") @db.VarChar(255)
+  stripePriceId         String?            @map("stripe_price_id") @db.VarChar(255)
+  createdAt             DateTime           @default(now()) @map("created_at")
+  updatedAt             DateTime           @updatedAt @map("updated_at")
+
+  org                   Organisation       @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  product               Product            @relation(fields: [productId], references: [id])
+  licences              Licence[]
+
+  @@index([orgId])
+  @@index([productId])
+  @@index([stripeSubscriptionId])
+  @@map("subscriptions")
+}
+
+// ─── Licences ───────────────────────────────────────────────────────────────
+
+enum LicenceRecordType {
+  subscription
+  time_limited @map("time_limited")
+  unlimited
+}
+
+model Licence {
+  id              String            @id @default(uuid()) @db.Uuid
+  orgId           String            @map("org_id") @db.Uuid
+  productId       String            @map("product_id") @db.Uuid
+  type            LicenceRecordType
+  subscriptionId  String?           @map("subscription_id") @db.VarChar(50)
+  expiryDate      DateTime?         @map("expiry_date")
+  maxEnvironments Int               @default(5) @map("max_environments")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  org             Organisation      @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  product         Product           @relation(fields: [productId], references: [id])
+  subscription    Subscription?     @relation(fields: [subscriptionId], references: [id])
+  environments    Environment[]
+  activationCodes ActivationCode[]
+
+  @@index([orgId])
+  @@index([productId])
+  @@index([subscriptionId])
+  @@map("licences")
+}
+
+// ─── Environments ───────────────────────────────────────────────────────────
+
+model Environment {
+  id              String           @id @default(uuid()) @db.Uuid
+  licenceId       String           @map("licence_id") @db.Uuid
+  environmentCode String           @map("environment_code") @db.VarChar(20)
+  name            String?          @db.VarChar(100)
+  activatedAt     DateTime?        @map("activated_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+
+  licence         Licence          @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+  activationCodes ActivationCode[]
+
+  @@unique([licenceId, environmentCode])
+  @@map("environments")
+}
+
+// ─── Activation Codes (audit trail) ─────────────────────────────────────────
+
+model ActivationCode {
+  id            String      @id @default(uuid()) @db.Uuid
+  environmentId String      @map("environment_id") @db.Uuid
+  licenceId     String      @map("licence_id") @db.Uuid
+  licenceType   Int         @map("licence_type")   // 100000001/2/3
+  code          String      @db.Text
+  endDate       DateTime?   @map("end_date")
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  environment   Environment @relation(fields: [environmentId], references: [id], onDelete: Cascade)
+  licence       Licence     @relation(fields: [licenceId], references: [id], onDelete: Cascade)
+
+  @@index([environmentId])
+  @@index([licenceId])
+  @@map("activation_codes")
+}
+
+// ─── Support Tickets ────────────────────────────────────────────────────────
+
+enum TicketStatus {
+  open
+  in_progress @map("in_progress")
+  resolved
+  closed
+}
+
+enum TicketPriority {
+  low
+  medium
+  high
+}
+
+model SupportTicket {
+  id        String         @id @default(uuid()) @db.Uuid
+  orgId     String         @map("org_id") @db.Uuid
+  productId String?        @map("product_id") @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  subject   String         @db.VarChar(300)
+  status    TicketStatus   @default(open)
+  priority  TicketPriority @default(medium)
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  org       Organisation   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  product   Product?       @relation(fields: [productId], references: [id])
+  user      User           @relation(fields: [userId], references: [id])
+  messages  TicketMessage[]
+
+  @@index([orgId])
+  @@index([productId])
+  @@index([userId])
+  @@map("support_tickets")
+}
+
+model TicketMessage {
+  id         String        @id @default(uuid()) @db.Uuid
+  ticketId   String        @map("ticket_id") @db.Uuid
+  userId     String        @map("user_id") @db.Uuid
+  body       String        @db.Text
+  isInternal Boolean       @default(false) @map("is_internal")
+  createdAt  DateTime      @default(now()) @map("created_at")
+
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  user       User          @relation(fields: [userId], references: [id])
+
+  @@index([ticketId])
+  @@map("ticket_messages")
+}
+
+// ─── File Downloads ─────────────────────────────────────────────────────────
+
+enum DownloadCategory {
+  solution
+  powerbi
+  guide
+}
+
+model FileDownload {
+  id          String           @id @default(uuid()) @db.Uuid
+  productId   String           @map("product_id") @db.Uuid
+  name        String           @db.VarChar(200)
+  description String           @db.Text
+  category    DownloadCategory
+  version     String           @db.VarChar(50)
+  blobPath    String           @map("blob_path") @db.VarChar(500)
+  fileSize    BigInt           @map("file_size")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  product     Product          @relation(fields: [productId], references: [id])
+  logs        DownloadLog[]
+
+  @@index([productId])
+  @@map("file_downloads")
+}
+
+model DownloadLog {
+  id           String        @id @default(uuid()) @db.Uuid
+  fileId       String        @map("file_id") @db.Uuid
+  userId       String        @map("user_id") @db.Uuid
+  orgId        String        @map("org_id") @db.Uuid
+  downloadedAt DateTime      @default(now()) @map("downloaded_at")
+
+  file         FileDownload  @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  user         User          @relation(fields: [userId], references: [id])
+  org          Organisation  @relation(fields: [orgId], references: [id])
+
+  @@index([fileId])
+  @@index([userId])
+  @@index([orgId])
+  @@map("download_logs")
+}

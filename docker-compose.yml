@@ -1,0 +1,66 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: {{PROJECT_NAME_LOWER}}
+      POSTGRES_PASSWORD: localdev
+      POSTGRES_DB: {{PROJECT_NAME_LOWER}}_portal
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U {{PROJECT_NAME_LOWER}} -d {{PROJECT_NAME_LOWER}}_portal']
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: packages/api/Dockerfile
+    ports:
+      - '3001:3001'
+    environment:
+      DATABASE_URL: postgresql://{{PROJECT_NAME_LOWER}}:localdev@db:5432/{{PROJECT_NAME_LOWER}}_portal
+      NODE_ENV: development
+      PORT: '3001'
+      ENTRA_EXTERNAL_ID_TENANT: {{ENTRA_CIAM_TENANT}}
+      ENTRA_EXTERNAL_ID_TENANT_ID: your-tenant-id
+      ENTRA_EXTERNAL_ID_CLIENT_ID: your-client-id
+      STRIPE_SECRET_KEY: sk_test_placeholder
+      STRIPE_WEBHOOK_SECRET: whsec_placeholder
+      ACTIVATION_HMAC_KEY: MojoAct1v8Key9X
+      PORTAL_URL: http://localhost:5173
+    depends_on:
+      db:
+        condition: service_healthy
+
+  portal:
+    build:
+      context: .
+      dockerfile: packages/portal/Dockerfile
+    ports:
+      - '8080:80'
+    depends_on:
+      - api
+
+  mcp:
+    build:
+      context: .
+      dockerfile: packages/mcp-server/Dockerfile
+    ports:
+      - '127.0.0.1:3002:3002'
+    environment:
+      DATABASE_URL: postgresql://{{PROJECT_NAME_LOWER}}:localdev@db:5432/{{PROJECT_NAME_LOWER}}_portal
+      MCP_PORT: '3002'
+      ACTIVATION_HMAC_KEY: ${ACTIVATION_HMAC_KEY:?Set ACTIVATION_HMAC_KEY in .env}
+      ENTRA_WORKFORCE_TENANT_ID: ${ENTRA_WORKFORCE_TENANT_ID:?Set ENTRA_WORKFORCE_TENANT_ID in .env}
+      ENTRA_WORKFORCE_CLIENT_ID: ${ENTRA_WORKFORCE_CLIENT_ID:?Set ENTRA_WORKFORCE_CLIENT_ID in .env}
+      MCP_SERVER_URL: http://localhost:3002
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

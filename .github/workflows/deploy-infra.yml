@@ -1,0 +1,54 @@
+name: Deploy Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+concurrency:
+  group: infra-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-infra:
+    name: Deploy Bicep (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group ${{ vars.RESOURCE_GROUP }} \
+            --template-file ./infra/main.bicep \
+            --parameters \
+              environment=${{ github.event.inputs.environment }} \
+              entraExternalIdTenant=${{ secrets.ENTRA_EXTERNAL_ID_TENANT }} \
+              entraExternalIdTenantId=${{ secrets.ENTRA_EXTERNAL_ID_TENANT_ID }} \
+              entraExternalIdClientId=${{ secrets.ENTRA_EXTERNAL_ID_CLIENT_ID }} \
+              entraWorkforceTenantId=${{ secrets.ENTRA_WORKFORCE_TENANT_ID }} \
+              entraWorkforceClientId=${{ secrets.ENTRA_WORKFORCE_CLIENT_ID }} \
+              dbPassword=${{ secrets.DB_PASSWORD }} \
+              stripeSecretKey=${{ secrets.STRIPE_SECRET_KEY }} \
+              stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
+              activationHmacKey=${{ secrets.ACTIVATION_HMAC_KEY }}

@@ -1,0 +1,8 @@
+{
+  "servers": {
+    "{{PROJECT_NAME_LOWER}}": {
+      "type": "http",
+      "url": "https://mcp.{{DOMAIN}}/mcp"
+    }
+  }
+}

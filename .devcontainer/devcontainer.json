@@ -1,0 +1,48 @@
+{
+  "name": "{{PROJECT_NAME}} Customer Portal",
+  "image": "mcr.microsoft.com/devcontainers/typescript-node:4-24-bookworm",
+
+  "features": {
+    "ghcr.io/devcontainers/features/powershell:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/dotnet:2": {
+      "version": "10.0",
+      "additionalVersions": "8.0"
+    }
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "typescript.tsdk": "node_modules/typescript/lib",
+        "files.eol": "\n",
+        "files.trimTrailingWhitespace": true
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-dotnettools.csharp",
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "ms-vscode.vscode-typescript-next",
+        "dsznajder.es7-react-js-snippets",
+        "github.vscode-github-actions",
+        "EditorConfig.EditorConfig",
+        "redhat.vscode-yaml",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.azure-repos",
+        "github.codespaces",
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-vscode.vscode-github-issue-notebooks",
+        "bierner.github-markdown-preview",
+        "github.vscode-pull-request-github",
+        "ms-vscode.remote-repositories",
+        "ms-vscode.powershell",
+        "analysis-services.powerbi-modeling-mcp"
+      ]
+    }
+  }
+}

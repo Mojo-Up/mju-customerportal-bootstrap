@@ -1,0 +1,13 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-mojo: #ff5a15;
+  --color-mojo-dark: #e04d0f;
+  --color-mojo-light: #ff7a42;
+  --color-mojo-50: #fff4ed;
+  --color-mojo-100: #ffe6d5;
+  --color-teal: #01b6a8;
+  --color-teal-dark: #019e92;
+  --color-dark: #111111;
+  --color-dark-soft: #1a1a2e;
+}

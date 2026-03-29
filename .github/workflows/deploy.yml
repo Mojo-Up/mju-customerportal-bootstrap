@@ -1,0 +1,103 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deploy environment'
+        required: true
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+concurrency:
+  group: deploy-${{ github.event.inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  ACR_NAME: ${{ vars.ACR_NAME }}
+  RESOURCE_GROUP: ${{ vars.RESOURCE_GROUP }}
+
+jobs:
+  build-deploy:
+    name: Build & Deploy (${{ github.event.inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Azure Login
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: ACR Login
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build & Push API Image
+        run: |
+          docker build -f packages/api/Dockerfile \
+            -t ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-api:${{ github.sha }} .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-api:${{ github.sha }}
+
+      - name: Build & Push Portal Image
+        run: |
+          docker build -f packages/portal/Dockerfile \
+            --build-arg VITE_API_URL=${{ vars.API_URL }} \
+            --build-arg VITE_ENTRA_EXTERNAL_ID_TENANT=${{ secrets.ENTRA_EXTERNAL_ID_TENANT }} \
+            --build-arg VITE_ENTRA_EXTERNAL_ID_CLIENT_ID=${{ secrets.ENTRA_EXTERNAL_ID_CLIENT_ID }} \
+            -t ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-portal:${{ github.sha }} .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-portal:${{ github.sha }}
+
+      - name: Build & Push MCP Image
+        run: |
+          docker build -f packages/mcp-server/Dockerfile \
+            -t ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-mcp:${{ github.sha }} .
+          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ vars.IMAGE_PREFIX }}-mcp:${{ github.sha }}
+
+      - name: Deploy Infrastructure
+        run: |
+          az deployment group create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --template-file ./infra/main.bicep \
+            --parameters \
+              environment=${{ github.event.inputs.environment }} \
+              imageTag=${{ github.sha }} \
+              entraExternalIdTenant=${{ secrets.ENTRA_EXTERNAL_ID_TENANT }} \
+              entraExternalIdTenantId=${{ secrets.ENTRA_EXTERNAL_ID_TENANT_ID }} \
+              entraExternalIdClientId=${{ secrets.ENTRA_EXTERNAL_ID_CLIENT_ID }} \
+              entraWorkforceTenantId=${{ secrets.ENTRA_WORKFORCE_TENANT_ID }} \
+              entraWorkforceClientId=${{ secrets.ENTRA_WORKFORCE_CLIENT_ID }} \
+              dbPassword=${{ secrets.DB_PASSWORD }} \
+              stripeSecretKey=${{ secrets.STRIPE_SECRET_KEY }} \
+              stripeWebhookSecret=${{ secrets.STRIPE_WEBHOOK_SECRET }} \
+              activationHmacKey=${{ secrets.ACTIVATION_HMAC_KEY }}
+
+      - name: Run Database Migrations
+        working-directory: packages/api
+        run: |
+          RUNNER_IP=$(curl -s https://api.ipify.org)
+          az postgres flexible-server firewall-rule create \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.POSTGRES_SERVER_NAME }} \
+            --rule-name gh-actions-migration \
+            --start-ip-address "$RUNNER_IP" \
+            --end-ip-address "$RUNNER_IP" \
+            -o none
+          trap 'az postgres flexible-server firewall-rule delete \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --name ${{ vars.POSTGRES_SERVER_NAME }} \
+            --rule-name gh-actions-migration \
+            --yes -o none' EXIT
+          npx prisma@6 migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
