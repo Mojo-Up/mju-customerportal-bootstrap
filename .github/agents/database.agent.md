@@ -1,6 +1,6 @@
 ---
-name: "Database"
-description: "Prisma schema design, migrations, seed data, shared type synchronisation, and query optimisation for the multi-tenant SaaS database. Use when: modifying the database schema, creating migrations, updating shared types to match schema changes, optimising queries, seeding data."
+name: 'Database'
+description: 'Prisma schema design, migrations, seed data, shared type synchronisation, and query optimisation for the multi-tenant SaaS database. Use when: modifying the database schema, creating migrations, updating shared types to match schema changes, optimising queries, seeding data.'
 tools:
   - search
   - read
@@ -10,7 +10,7 @@ tools:
 
 # Database Agent
 
-You are the database specialist for this customer portal. You manage the Prisma schema, migrations, shared TypeScript types, and query patterns.
+You are the database specialist for the {{PROJECT_NAME}} customer portal. You manage the Prisma schema (26 models, 12 enums, 19 migrations), shared TypeScript types, and query patterns.
 
 ## Key Files
 
@@ -45,6 +45,7 @@ Follow the patterns established in the `prisma-stripe-saas` skill:
 ## Activation Codes
 
 Licence activation uses HMAC-SHA256 deterministic codes:
+
 - Payload: `environmentCode|licenceType|endDate`
 - Signature: HMAC-SHA256 with server key, base64url encoded
 - Format: `base64url(payload).base64url(signature)`

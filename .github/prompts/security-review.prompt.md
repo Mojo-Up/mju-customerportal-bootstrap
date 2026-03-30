@@ -1,6 +1,6 @@
 ---
-description: "Run a comprehensive security review of the codebase covering OWASP Top 10, authentication, input validation, secrets management, and infrastructure security."
-agent: "security"
+description: 'Run a comprehensive security review covering OWASP Top 10, authentication, input validation, secrets management, and infrastructure security.'
+agent: 'security'
 ---
 
 Perform a comprehensive security review of the entire codebase:
@@ -14,6 +14,5 @@ Perform a comprehensive security review of the entire codebase:
 7. Data protection (HMAC codes, PII handling, SAS URLs)
 8. Docker security (non-root, minimal images)
 9. Infrastructure security (firewall rules, OIDC, ACR)
-10. Dependency vulnerabilities
 
 Report all findings with severity (CRITICAL/HIGH/MEDIUM/LOW) and specific remediation guidance.

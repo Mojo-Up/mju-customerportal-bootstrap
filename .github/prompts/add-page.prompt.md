@@ -1,7 +1,7 @@
 ---
-description: "Add a new React page to the portal with routing, data fetching, loading/error states, and consistent Tailwind styling."
-agent: "portal"
-argument-hint: "Describe the page (name, purpose, data it displays)"
+description: 'Add a new React page to the portal with routing, data fetching, loading/error states, and consistent Tailwind styling.'
+agent: 'portal'
+argument-hint: 'Describe the page (name, purpose, data it displays)'
 ---
 
 Add a new portal page following the established React patterns:

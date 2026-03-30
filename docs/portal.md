@@ -2,7 +2,7 @@
 
 ## Overview
 
-The portal (`packages/portal`) is a React single-page application built with Vite, TailwindCSS, and MSAL for authentication. It provides the customer-facing interface for managing organisations, subscriptions, licences, support tickets, and downloads, plus a staff admin panel.
+The portal (`packages/portal`) is a React single-page application built with Vite, TailwindCSS, and MSAL for authentication. It provides the customer-facing interface for managing organisations, subscriptions, licences, support tickets, knowledge base, downloads, and more, plus a comprehensive staff admin panel.
 
 **URL**: `https://portal.{{DOMAIN}}`
 
@@ -54,137 +54,66 @@ graph TD
     OrgCtx -->|Fetch orgs| ApiClient
 ```
 
-## Authentication Flow
-
-```mermaid
-sequenceDiagram
-    participant User as User
-    participant Portal as Portal SPA
-    participant MSAL as MSAL Library
-    participant CIAM as Entra CIAM
-    participant API as API Server
-
-    User->>Portal: Visit portal.{{DOMAIN}}
-    Portal->>Portal: Check MSAL accounts
-
-    alt Not authenticated
-        Portal->>Portal: Show Landing Page
-        User->>Portal: Click "Sign In"
-        Portal->>MSAL: loginRedirect()
-        MSAL->>CIAM: Redirect to login
-        CIAM->>User: Sign in / Sign up form
-        User->>CIAM: Credentials
-        CIAM->>Portal: Redirect with auth code
-        MSAL->>MSAL: handleRedirectPromise()
-        MSAL->>CIAM: Exchange code for tokens
-        CIAM-->>MSAL: ID token + Access token
-    end
-
-    Portal->>MSAL: acquireTokenSilent()
-    MSAL-->>Portal: Access token
-    Portal->>API: GET /api/organisations (Bearer token)
-    API-->>Portal: User's organisations
-
-    alt No organisations
-        Portal->>Portal: Show Onboarding
-    else Has organisations
-        Portal->>Portal: Show Dashboard
-    end
-```
-
-## Application Structure
-
-```mermaid
-graph TD
-    subgraph Entry["Entry Point"]
-        Main["main.tsx<br/>MSAL init + render"]
-    end
-
-    subgraph App["App.tsx"]
-        MsalProv["MsalProvider"]
-        BRouter["BrowserRouter"]
-        Routes["Routes"]
-    end
-
-    subgraph Layout["AppLayout"]
-        Nav["Navigation Bar<br/>Logo, links, org switcher, sign out"]
-        Outlet["Page Outlet"]
-    end
-
-    subgraph Public["Public Routes"]
-        Landing["/ — LandingPage"]
-        Pricing["/pricing — PricingPage"]
-    end
-
-    subgraph Protected["Protected Routes (auth required)"]
-        Dashboard["/dashboard"]
-        Products["/products"]
-        ProductDetail["/products/:slug"]
-        Licences["/licences"]
-        Support["/support"]
-        Downloads["/downloads"]
-        Settings["/settings"]
-        Billing["/billing"]
-        Onboarding["/onboarding"]
-        CheckoutSuccess["/checkout/success"]
-        AcceptInvite["/accept-invite/:token"]
-    end
-
-    subgraph Admin["Admin Routes (staff only)"]
-        AdminDash["/admin"]
-        AdminProducts["/admin/products"]
-        AdminOrgs["/admin/organisations"]
-        AdminOrgDetail["/admin/organisations/:orgId"]
-        AdminUsers["/admin/users"]
-    end
-
-    Main --> App
-    App --> MsalProv --> BRouter --> Routes
-    Routes --> Public
-    Routes --> Layout
-    Layout --> Nav
-    Layout --> Outlet
-    Outlet --> Protected
-    Outlet --> Admin
-```
-
 ## Routing
 
-### Public Routes (no authentication)
+### Public Routes (4)
 
 | Path | Page | Description |
 |------|------|-------------|
-| `/` | `LandingPage` | Marketing landing page with sign-in CTA |
+| `/` | `LandingPage` | Marketing landing page with customer logos, testimonials, sign-in CTA |
 | `/pricing` | `PricingPage` | Product pricing plans (fetched from API) |
+| `/products` | `ProductsPage` | Browse product catalogue |
+| `/products/:slug` | `ProductDetailPage` | Product details with features and subscribe action |
 
-### Protected Routes (authentication required)
-
-All protected routes are wrapped in `<ProtectedRoute>`, which uses MSAL's `<AuthenticatedTemplate>` / `<UnauthenticatedTemplate>`. Unauthenticated users are redirected to `/`.
+### Post-Login (1)
 
 | Path | Page | Description |
 |------|------|-------------|
-| `/dashboard` | `DashboardPage` | Organisation overview, stats, pending invitations |
-| `/products` | `ProductsPage` | Browse product catalogue |
-| `/products/:slug` | `ProductDetailPage` | Product details with subscribe action |
-| `/licences` | `LicencesPage` | Manage licences, environments, activation codes |
-| `/support` | `SupportPage` | Support tickets — create, view, reply |
-| `/downloads` | `DownloadsPage` | Download files (solutions, Power BI, guides) |
-| `/settings` | `OrgSettingsPage` | Organisation settings, members, invitations |
+| `/post-login` | `PostLoginRouter` | Redirect handler after auth (pending purchase or dashboard) |
+
+### Authenticated Routes (13)
+
+All protected routes are wrapped in `<ProtectedRoute>` using MSAL's `<AuthenticatedTemplate>`. Unauthenticated users are redirected to `/`.
+
+| Path | Page | Description |
+|------|------|-------------|
+| `/dashboard` | `DashboardPage` | Organisation overview, stats, pending invitations, testimonial form |
+| `/licences` | `LicencesPage` | Manage licences, environments, generate activation codes |
+| `/support` | `SupportPage` | Create and list support tickets with file upload |
+| `/support/:ticketId` | `TicketDetailPage` | Ticket messages, file attachments, KB suggestions (debounced search) |
+| `/downloads` | `DownloadsPage` | Download files (solutions, Power BI, guides) with category filter |
+| `/settings` | `OrgSettingsPage` | Organisation settings, members, invitations, delete org |
 | `/billing` | `BillingPage` | Subscription overview, Stripe portal link |
 | `/onboarding` | `OnboardingPage` | Create first organisation (shown when user has no orgs) |
-| `/checkout/success` | `CheckoutSuccessPage` | Post-checkout confirmation |
+| `/checkout/success` | `CheckoutSuccessPage` | Post-checkout confirmation, activate licence |
+| `/profile` | `ProfilePage` | Edit user profile (name, job title, phone, mobile, marketing opt-out) |
+| `/kb` | `KnowledgeBasePage` | Knowledge base search and browse |
+| `/kb/:slug` | `ArticlePage` | Article detail with markdown rendering and table of contents |
+| `/contact` | `ContactPage` | Contact form submission |
 | `/accept-invite/:token` | `AcceptInvitePage` | Accept organisation invitation via link |
 
-### Admin Routes (staff only)
+### Admin Routes (17, staff only)
 
-Admin routes are visible only when the current user has `isStaff = true` (checked via `GET /api/me`).
+Admin routes are visible only when the current user has `isStaff = true`. No frontend guard — backend enforces `requireStaff`.
 
 | Path | Page | Description |
 |------|------|-------------|
 | `/admin` | `AdminDashboardPage` | System-wide statistics |
 | `/admin/products` | `AdminProductsPage` | Manage products and pricing plans |
+| `/admin/products/:productId/versions` | `AdminProductVersionsPage` | Manage product versions |
 | `/admin/organisations` | `AdminOrganisationsPage` | Search and manage organisations |
-| `/admin/organisations/:orgId` | `AdminOrgDetailPage` | Full org detail (members, subs, licences) |
+| `/admin/organisations/:orgId` | `AdminOrgDetailPage` | Full org detail (members, subs, licences, envs) |
+| `/admin/support` | `AdminSupportPage` | Support dashboard with stats |
+| `/admin/support/tickets` | `AdminTicketsPage` | All tickets, filterable |
+| `/admin/support/tickets/:ticketId` | `AdminTicketDetailPage` | Edit ticket, assign, add internal notes |
+| `/admin/support/my-tickets` | `AdminMyTicketsPage` | Tickets assigned to current staff |
+| `/admin/support/team-tickets` | `AdminTeamTicketsPage` | Team's tickets |
+| `/admin/downloads` | `AdminDownloadsPage` | Upload and manage download files |
+| `/admin/kb` | `AdminKBPage` | Create/edit knowledge base articles |
+| `/admin/contacts` | `AdminContactsPage` | View contact form submissions |
+| `/admin/customer-logos` | `AdminCustomerLogosPage` | Manage customer logo carousel |
+| `/admin/testimonials` | `AdminTestimonialsPage` | Approve/reject testimonials |
+| `/admin/sla-settings` | `AdminSLASettingsPage` | Configure SLA policies |
 | `/admin/users` | `AdminUsersPage` | User management, toggle staff access |
 
 ## Key Components
@@ -208,21 +137,6 @@ Wraps MSAL operations and exposes:
 
 Manages the current organisation context across the app.
 
-```mermaid
-stateDiagram-v2
-    [*] --> Loading: Auth complete
-    Loading --> NoOrgs: API returns empty
-    Loading --> HasOrgs: API returns orgs
-    NoOrgs --> HasOrgs: User creates org
-    HasOrgs --> Active: Set current org
-
-    state Active {
-        [*] --> Selected: From sessionStorage or first org
-        Selected --> Switched: User picks different org
-        Switched --> Selected: Org set + saved to sessionStorage
-    }
-```
-
 | Property/Method | Type | Description |
 |----------------|------|-------------|
 | `organisations` | `OrgInfo[]` | All organisations the user belongs to |
@@ -235,24 +149,11 @@ stateDiagram-v2
 
 Provides an authenticated fetch wrapper that automatically attaches Bearer tokens.
 
-```typescript
-const { apiFetch } = useApi();
-
-// GET request
-const orgs = await apiFetch<OrgInfo[]>('/api/organisations');
-
-// POST request
-await apiFetch('/api/organisations', {
-  method: 'POST',
-  body: { name: 'New Org' },
-});
-```
-
-Features:
 - Automatic `Bearer` token via `getAccessToken()`
 - JSON serialisation/deserialisation
 - Error extraction from API response body
 - `isSafeRedirectUrl()` helper for validating redirect URLs (HTTPS only, optional domain allowlist)
+- `FormData` support for file uploads
 
 ### `AppLayout`
 
@@ -263,17 +164,32 @@ The main layout for all authenticated pages:
 - **Mobile responsive**: Hamburger menu for screens below `lg` breakpoint
 - **Outlet**: Renders the matched child route
 
+### Reusable Components
+
+| Component | File | Description |
+|-----------|------|-------------|
+| `RichTextArea` | `components/RichTextArea.tsx` | Markdown editor with button toolbar and preview |
+| `MarkdownRenderer` | `components/MarkdownRenderer.tsx` | Markdown to HTML renderer (GFM + raw HTML) |
+| `TableOfContents` | `components/TableOfContents.tsx` | Auto-generated article TOC from headings |
+| `TestimonialForm` | `components/TestimonialForm.tsx` | Submit testimonial form (quote, rating, category) |
+
+## Styling
+
+- **TailwindCSS 4** with {{PROJECT_NAME}} design tokens
+- Brand primary: teal (`{{BRAND_PRIMARY}}`) — buttons, links, active states
+- Brand accent: orange (`{{BRAND_ACCENT}}`) — highlights, CTAs, badges
+- Consistent spacing: use Tailwind scale (p-4, gap-6, etc.), not arbitrary values
+- Responsive: mobile-first breakpoints (sm → md → lg → xl)
+
 ## Build & Deployment
 
 ### Development
 
 ```bash
-# Start dev server with hot reload
-cd packages/portal
-pnpm dev
+pnpm dev:portal  # port 5173
 ```
 
-Vite dev server runs on `http://localhost:5173` with a proxy that forwards `/api` requests to `http://localhost:3001`.
+Vite dev server proxies `/api` requests to `http://localhost:3001`.
 
 ### Production Build
 
@@ -281,25 +197,7 @@ Vite dev server runs on `http://localhost:5173` with a proxy that forwards `/api
 pnpm --filter @{{ORG_SCOPE}}/portal build
 ```
 
-Outputs static files to `packages/portal/dist/`.
-
 ### Docker Build
-
-```mermaid
-graph LR
-    subgraph Stage1["Build Stage (node:24-slim)"]
-        Install[pnpm install]
-        BuildShared[Build @{{ORG_SCOPE}}/shared]
-        BuildPortal[Build @{{ORG_SCOPE}}/portal<br/>with VITE_ build args]
-    end
-
-    subgraph Stage2["Production Stage (nginx:alpine)"]
-        Copy[Copy dist/ to nginx html]
-        Conf[Copy nginx.conf]
-    end
-
-    Stage1 --> Stage2
-```
 
 Build arguments injected at build time:
 
@@ -311,64 +209,7 @@ Build arguments injected at build time:
 
 ### nginx Configuration
 
-Production static hosting with:
-
-- **SPA fallback**: `try_files $uri $uri/ /index.html` — all routes fall through to React Router
-- **Security headers**: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS (2 years), Permissions-Policy
-- **CSP**: Restricts scripts to `self`, allows connections to `*.{{DOMAIN}}`, `*.ciamlogin.com`, `*.stripe.com`, frames only from `*.ciamlogin.com`
+- **SPA fallback**: `try_files $uri $uri/ /index.html`
+- **Security headers**: X-Frame-Options, X-Content-Type-Options, Referrer-Policy, HSTS (2y), Permissions-Policy
+- **CSP**: Restricts scripts to `self`, allows connections to `*.{{DOMAIN}}`, `*.ciamlogin.com`, `*.stripe.com`
 - **Static asset caching**: 1 year with `immutable` for JS, CSS, images, fonts
-
-## Configuration
-
-Environment variables (injected at build time via Vite):
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_API_URL` | No | API base URL (dev proxy handles this locally) |
-| `VITE_ENTRA_EXTERNAL_ID_TENANT` | Yes | CIAM tenant subdomain (e.g. `{{ENTRA_CIAM_TENANT}}`) |
-| `VITE_ENTRA_EXTERNAL_ID_CLIENT_ID` | Yes | Entra app registration client ID |
-
-### MSAL Configuration
-
-| Setting | Value |
-|---------|-------|
-| Authority | `https://{tenant}.ciamlogin.com/` |
-| Known authorities | `{tenant}.ciamlogin.com` |
-| Redirect URI | `window.location.origin` |
-| Cache location | `sessionStorage` |
-| Login scopes | `api://{clientId}/access` |
-
-## Page Summary
-
-### Customer Pages
-
-```mermaid
-graph TD
-    Landing["Landing Page<br/>Marketing + Sign In"] -->|Sign In| Dashboard
-    Dashboard["Dashboard<br/>Org stats, invitations"] --> Products
-    Dashboard --> Licences
-    Dashboard --> Support
-    Dashboard --> Downloads
-
-    Products["Products<br/>Browse catalogue"] --> ProductDetail["Product Detail<br/>Features + Subscribe"]
-    ProductDetail -->|Subscribe| Checkout["Stripe Checkout"]
-    Checkout --> Success["Checkout Success"]
-
-    Licences["Licences<br/>Manage environments"] -->|Activate| ActivationCode["Generate Code"]
-    Support["Support<br/>Tickets + Messages"] -->|New Ticket| CreateTicket["Create Ticket"]
-    Downloads["Downloads<br/>Solutions, guides"] -->|Download| SAS["SAS URL redirect"]
-
-    Dashboard --> Settings["Org Settings<br/>Members, invitations"]
-    Dashboard --> Billing["Billing<br/>Subscription management"]
-    Billing -->|Manage| StripePortal["Stripe Portal"]
-```
-
-### Admin Pages
-
-```mermaid
-graph TD
-    AdminDash["Admin Dashboard<br/>System stats"] --> AdminProducts["Products<br/>CRUD + pricing plans"]
-    AdminDash --> AdminOrgs["Organisations<br/>Search + manage"]
-    AdminDash --> AdminUsers["Users<br/>Search + staff toggle"]
-    AdminOrgs --> AdminOrgDetail["Org Detail<br/>Members, subs, licences, envs"]
-```

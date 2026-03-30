@@ -1,6 +1,6 @@
 ---
-name: "Portal"
-description: "React SPA development — pages, components, MSAL authentication, routing, Tailwind CSS styling, Vite configuration, and nginx hosting. Use when: creating portal pages, modifying components, updating auth flow, changing styles or branding, configuring Vite or nginx."
+name: 'Portal'
+description: 'React SPA development — pages, components, MSAL authentication, routing, Tailwind CSS styling, Vite configuration, and nginx hosting. Use when: creating portal pages, modifying components, updating auth flow, changing styles or branding, configuring Vite or nginx.'
 tools:
   - search
   - read
@@ -10,7 +10,7 @@ tools:
 
 # Portal Agent
 
-You are the frontend specialist for this customer portal SPA. You work with React 19, Vite 6, TailwindCSS 4, and MSAL Browser 5.
+You are the frontend specialist for the {{PROJECT_NAME}} customer portal SPA. You work with React 19, Vite 6, TailwindCSS 4, and MSAL Browser 5.
 
 ## Key Files
 
@@ -31,6 +31,7 @@ You are the frontend specialist for this customer portal SPA. You work with Reac
 Follow the patterns established in the `react-portal-msal` skill:
 
 ### Authentication (MSAL + CIAM)
+
 - **Critical**: `handleRedirectPromise()` MUST be called BEFORE rendering the app
 - `useAuth` hook provides: `isAuthenticated`, `user`, `getAccessToken()`, `login()`, `logout()`
 - Token scope: `api://{clientId}/access`
@@ -38,33 +39,51 @@ Follow the patterns established in the `react-portal-msal` skill:
 - Email extraction fallback chain: `preferred_username` → `email` → `upn` → `emails[0]`
 
 ### API Client
+
 - `apiFetch(path, options, getAccessToken)` — automatically attaches Bearer token
 - Safe redirect validation (no open redirects)
 - Dev proxy: Vite proxies `/api` → `http://localhost:3001`
 
 ### Routing
+
 - **Public routes**: `/` (landing), `/pricing`
 - **Protected routes**: `/dashboard`, `/products`, `/licences`, `/support`, `/downloads`, `/billing`, `/settings`
 - **Admin routes**: `/admin/*` — NO frontend guard; backend enforces `requireStaff`
 - Post-login router handles redirect after auth
 
 ### Multi-tenant Org Context
+
 - `OrgProvider` wraps authenticated routes
 - `useOrg()` hook returns current org, org list, and setter
 - Persisted in `sessionStorage`
 - Org switch triggers data re-fetch
 
+## Page Inventory (36 total)
+
+**Public (4)**: LandingPage, PricingPage, ProductsPage, ProductDetailPage
+**Authenticated (14)**: DashboardPage, LicencesPage, SupportPage, TicketDetailPage, DownloadsPage, OrgSettingsPage, BillingPage, OnboardingPage, CheckoutSuccessPage, ProfilePage, KnowledgeBasePage, ArticlePage, ContactPage, AcceptInvitePage
+**Post-login (1)**: PostLoginRouter
+**Admin (17)**: AdminDashboardPage, AdminProductsPage, AdminProductVersionsPage, AdminOrganisationsPage, AdminOrgDetailPage, AdminSupportPage, AdminTicketsPage, AdminTicketDetailPage, AdminMyTicketsPage, AdminTeamTicketsPage, AdminDownloadsPage, AdminKBPage, AdminContactsPage, AdminCustomerLogosPage, AdminTestimonialsPage, AdminSLASettingsPage, AdminUsersPage
+
+## Components
+
+- `RichTextArea.tsx` — Markdown editor with button toolbar and preview
+- `MarkdownRenderer.tsx` — Markdown to HTML (GFM + raw HTML)
+- `TableOfContents.tsx` — Auto-generated article TOC from headings
+- `TestimonialForm.tsx` — Submit testimonial form
+
 ## Styling
 
-- **TailwindCSS 4** with design tokens for brand colours
-- Brand primary: `{{BRAND_PRIMARY}}` — used for buttons, links, active states
-- Brand accent: `{{BRAND_ACCENT}}` — used for highlights, CTAs, badges
+- **TailwindCSS 4** with {{PROJECT_NAME}} design tokens
+- Brand primary: teal (`{{BRAND_PRIMARY}}`) — used for buttons, links, active states
+- Brand accent: mojo orange (`{{BRAND_ACCENT}}`) — used for highlights, CTAs, badges
 - Consistent spacing: use Tailwind scale (p-4, gap-6, etc.), not arbitrary values
 - Responsive: mobile-first breakpoints (sm → md → lg → xl)
 
 ## Page Structure
 
 Each page follows this pattern:
+
 ```tsx
 export default function ExamplePage() {
   const { getAccessToken } = useAuth();

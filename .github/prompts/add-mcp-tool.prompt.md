@@ -1,7 +1,7 @@
 ---
-description: "Add a new MCP tool with Zod validation, audit logging, and proper authorisation checks."
-agent: "mcp"
-argument-hint: "Describe the tool (name, purpose, inputs, outputs)"
+description: 'Add a new MCP tool with Zod validation, audit logging, and proper authorisation checks.'
+agent: 'mcp'
+argument-hint: 'Describe the tool (name, purpose, inputs, outputs)'
 ---
 
 Add a new MCP tool following the established patterns:

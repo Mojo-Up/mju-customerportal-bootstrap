@@ -79,6 +79,9 @@ az deployment group create \
 | `STRIPE_SECRET_KEY`           | Stripe live secret key                                  |
 | `STRIPE_WEBHOOK_SECRET`       | Stripe webhook signing secret                           |
 | `ACTIVATION_HMAC_KEY`         | HMAC key for licence activation codes                   |
+| `ACS_CONNECTION_STRING`       | Azure Communication Services connection string          |
+| `ACS_SENDER_ADDRESS`          | Email sender address (e.g. `no-reply@{{ORG_SCOPE}}.com.au`)    |
+| `CRON_SECRET`                 | Secret for cron job endpoints                           |
 
 ## Local Development
 
@@ -106,7 +109,7 @@ pnpm dev
 | Portal        | http://localhost:5173                                  |
 | API           | http://localhost:3001                                  |
 | MCP Server    | http://localhost:3002                                  |
-| PostgreSQL    | localhost:5432 (user: `{{PROJECT_NAME_LOWER}}`, password: `localdev`) |
+| PostgreSQL    | localhost:5432 (user: `mojoppm`, password: `localdev`) |
 | Prisma Studio | http://localhost:5555 (`pnpm db:studio`)               |
 
 ### Docker Compose (full stack)
@@ -252,7 +255,7 @@ az acr repository list --name {{ACR_NAME}} --output table
 ### View Tags for a Repository
 
 ```bash
-az acr repository show-tags --name {{ACR_NAME}} --repository {{PROJECT_NAME_LOWER}}-api --output table
+az acr repository show-tags --name {{ACR_NAME}} --repository mojoup-api --output table
 ```
 
 ### Purge Old Images (keep last 10)

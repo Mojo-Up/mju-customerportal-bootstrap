@@ -1,6 +1,6 @@
 ---
 name: prisma-stripe-saas
-description: 'Design Prisma schemas for multi-tenant SaaS with Stripe billing, licence management, environment activation with HMAC codes, support tickets, and subscription lifecycle. Use when: designing Prisma schema for SaaS, integrating Stripe subscriptions with database, building licence/activation systems, managing multi-tenant data isolation, handling Stripe webhook-driven state sync.'
+description: 'Design Prisma schemas for multi-tenant SaaS with Stripe billing, licence management, environment activation with HMAC codes, support tickets with SLA, knowledge base, testimonials, and subscription lifecycle. The current schema has 26 models, 12 enums, and 19 migrations. Use when: designing Prisma schema for SaaS, integrating Stripe subscriptions with database, building licence/activation systems, managing multi-tenant data isolation, handling Stripe webhook-driven state sync.'
 ---
 
 # Prisma Schema for Multi-Tenant SaaS with Stripe

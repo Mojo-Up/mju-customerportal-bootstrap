@@ -2,7 +2,7 @@
 
 ## Overview
 
-The MCP server (`packages/mcp-server`) provides AI agent automation tools for {{PROJECT_NAME}} staff. It implements the Model Context Protocol over Streamable HTTP transport using raw `node:http` (not Express). Authentication uses Microsoft Entra Workforce (standard AAD) OAuth 2.0 with RFC-compliant metadata endpoints.
+The MCP server (`packages/mcp-server`) provides 66 AI agent automation tools for {{PROJECT_NAME}} staff. It implements the Model Context Protocol over Streamable HTTP transport using raw `node:http` (not Express). Authentication uses Microsoft Entra Workforce (standard AAD) OAuth 2.0 with RFC-compliant metadata endpoints.
 
 **URL**: `https://customerportalmcp.{{DOMAIN}}`
 
@@ -23,7 +23,7 @@ graph TD
         RL[Rate Limiter<br/>60 req/min per IP]
         SM[Session Manager<br/>100 max, 30min TTL]
         Transport[StreamableHTTPServerTransport]
-        Tools[17 MCP Tools]
+        Tools[66 MCP Tools]
     end
 
     subgraph Data["Data Layer"]
@@ -51,7 +51,9 @@ graph TD
     Prisma --> DB
 ```
 
-## Authentication Flow
+## Authentication
+
+### Flow
 
 ```mermaid
 sequenceDiagram
@@ -60,15 +62,15 @@ sequenceDiagram
     participant Entra as Entra Workforce
 
     Client->>MCP: GET /.well-known/oauth-protected-resource
-    MCP-->>Client: { resource, auth_servers, scopes }
+    MCP-->>Client: 404 (intentional — avoids AADSTS9010010)
 
-    Client->>Entra: GET /.well-known/oauth-authorization-server
-    Entra-->>Client: { authorization_endpoint, token_endpoint }
+    Client->>MCP: GET /.well-known/oauth-authorization-server
+    MCP-->>Client: { issuer: MCP_SERVER_URL, auth/token endpoints, scopes }
 
-    Client->>MCP: GET /.well-known/oauth-client-registration
-    MCP-->>Client: { client_id, redirect_uris }
+    Client->>MCP: POST /oauth/register
+    MCP-->>Client: { client_id, scope, redirect_uris }
 
-    Client->>Entra: OAuth 2.0 Authorization Code Flow
+    Client->>Entra: OAuth 2.0 Authorization Code + PKCE
     Entra-->>Client: Access token (with MCP.Admin role)
 
     Client->>MCP: POST /mcp (Bearer token)
@@ -78,7 +80,9 @@ sequenceDiagram
     MCP-->>Client: MCP tool results
 ```
 
-### Authentication Requirements
+> **Why PRM returns 404:** When PRM exists, the MCP SDK sends an RFC 8707 `resource` parameter to Entra. Entra v2.0 rejects requests with both `resource` and scopes (`AADSTS9010010`). Returning 404 makes the SDK skip `resource` and rely on authorization server metadata / DCR instead.
+
+### Requirements
 
 | Check | Details |
 |-------|---------|
@@ -92,57 +96,13 @@ sequenceDiagram
 
 ## OAuth Metadata Endpoints
 
-These endpoints enable automatic client configuration per RFC standards.
+| Endpoint | RFC | Method | Purpose |
+|----------|-----|--------|--------|
+| `/.well-known/oauth-protected-resource` | 9728 | GET | Returns **404** (intentional — avoids AADSTS9010010) |
+| `/.well-known/oauth-authorization-server` | 8414 | GET | Returns Entra endpoints, scopes, and `issuer: MCP_SERVER_URL` |
+| `/oauth/register` | 7591 | POST | Dynamic client registration — returns pre-registered Entra client ID + scopes |
 
-### RFC 9728: Protected Resource Metadata
-
-```
-GET /.well-known/oauth-protected-resource
-```
-
-```json
-{
-  "resource": "https://customerportalmcp.{{DOMAIN}}",
-  "authorization_servers": ["https://login.microsoftonline.com/{tenantId}/v2.0"],
-  "scopes_supported": ["{clientId}/.default"],
-  "bearer_methods_supported": ["header"]
-}
-```
-
-### RFC 8414: Authorization Server Metadata
-
-```
-GET /.well-known/oauth-authorization-server
-```
-
-Proxies Entra's OpenID configuration with the server's scope.
-
-### RFC 7591: Dynamic Client Registration
-
-```
-GET /.well-known/oauth-client-registration
-POST /register
-```
-
-Returns the pre-registered Entra client ID (required for Copilot Studio which expects dynamic registration).
-
-## Session Management
-
-```mermaid
-stateDiagram-v2
-    [*] --> Created: POST /mcp (new session)
-    Created --> Active: Session ID assigned
-    Active --> Active: POST /mcp (same session)
-    Active --> Terminated: DELETE /mcp
-    Active --> Expired: 30min inactivity
-    Expired --> [*]
-    Terminated --> [*]
-
-    note right of Active
-        Max 100 concurrent sessions
-        Oldest evicted when full
-    end note
-```
+## Session & Rate Limiting
 
 | Setting | Value |
 |---------|-------|
@@ -150,212 +110,141 @@ stateDiagram-v2
 | Session TTL | 30 minutes (inactivity) |
 | Max body size | 1 MB |
 | Rate limit | 60 requests/minute per IP |
-| Request timeout | 30 seconds |
+| HTTP timeout | 0 (disabled — SSE streams are long-lived) |
 | Header timeout | 10 seconds |
 
-## Tools
+## Tools (66 total)
 
-The MCP server exposes 17 tools for staff and AI agent automation.
+### Organisation Tools (7)
 
-### Tool Overview
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_organisations` | List orgs with optional search | `search?`, `limit?` (default 10) |
+| `get_organisation_detail` | Full org detail (members, subs, licences, envs) | `identifier` (UUID, CUST-ID, or name) |
+| `create_organisation` | Create a new organisation | `name`, `ownerUserId?` |
+| `update_organisation` | Update organisation details | `orgId`, `name` |
+| `delete_organisation` | Delete an organisation | `orgId` |
+| `invite_member` | Invite a user to an organisation | `orgId`, `email`, `role` |
+| `add_member` | Directly add a user to an organisation | `orgId`, `userId`, `role` |
+| `change_member_role` | Change a member's role | `orgId`, `userId`, `role` |
+| `remove_member` | Remove a member from an organisation | `orgId`, `userId` |
 
-```mermaid
-graph TD
-    subgraph Org["Organisation Tools"]
-        T1[list_organisations]
-        T2[get_organisation_detail]
-    end
+### Subscription Tools (2)
 
-    subgraph Sub["Subscription Tools"]
-        T3[list_subscriptions]
-        T4[extend_subscription]
-    end
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_subscriptions` | List subscriptions with filters | `status?`, `expiringWithinDays?`, `limit?` (default 20) |
+| `extend_subscription` | Extend subscription end date | `subscriptionId`, `newEndDate` (ISO) |
 
-    subgraph Lic["Licence Tools"]
-        T5[generate_activation_code]
-        T6[create_licence]
-        T7[approve_environment_increase]
-    end
+### Licence Tools (3)
 
-    subgraph Tix["Support Tools"]
-        T8[list_support_tickets]
-        T9[get_ticket_detail]
-        T10[reply_to_ticket]
-        T11[update_ticket_status]
-    end
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `generate_activation_code` | Generate HMAC-signed activation code | `environmentCode`, `licenceType`, `subscriptionId?`, `endDate?`, `days?` |
+| `create_licence` | Create licence for an org | `orgId`, `productId`, `type`, `subscriptionId?`, `expiryDate?`, `maxEnvironments?` |
+| `approve_environment_increase` | Increase max environments | `licenceId`, `newLimit` (1-50) |
 
-    subgraph Prod["Product Tools"]
-        T12[list_products]
-        T13[get_product_dashboard]
-        T14[list_downloads]
-    end
+### Support Tools (7)
 
-    subgraph User["User Tools"]
-        T15[list_users]
-        T16[toggle_staff]
-    end
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_support_tickets` | List tickets with filters | `status?`, `limit?` (default 20) |
+| `get_ticket_detail` | Full ticket with all messages | `ticketId` |
+| `reply_to_ticket` | Reply with visible or internal note | `ticketId`, `body`, `staffUserId`, `isInternal?` |
+| `update_ticket_status` | Update status, priority, assignee, sentiment | `ticketId`, `status?`, `priority?`, `assigneeId?`, `sentiment?`, `productId?` |
+| `get_ticket_stats` | Ticket statistics (by status, priority) | — |
+| `get_sla_stats` | SLA compliance statistics | — |
+| `get_stale_tickets` | Tickets approaching SLA breach | — |
 
-    subgraph Stats["Dashboard"]
-        T17[get_stats]
-    end
-```
+### Product Tools (9)
 
-### Organisation Tools
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_products` | List products | `activeOnly?` (default true) |
+| `get_product_dashboard` | Per-product stats | `productId` |
+| `create_product` | Create a product | `name`, `description`, `iconUrl?`, `features?`, `activationStrategy?` |
+| `update_product` | Update product details | `productId`, `name?`, `description?`, etc. |
+| `create_pricing_plan` | Add pricing plan to product | `productId`, `name`, `stripePriceId`, `interval`, `price`, `currency` |
+| `delete_pricing_plan` | Delete a pricing plan | `planId` |
+| `list_product_versions` | List versions for a product | `productId` |
+| `create_product_version` | Create a new version | `productId`, `version`, `releaseNotes?`, `downloadUrl?` |
+| `update_product_version` | Update version details | `versionId`, ... |
+| `set_latest_version` | Mark a version as latest | `versionId` |
+| `delete_product_version` | Delete a version | `versionId` |
 
-#### `list_organisations`
+### Download Tools (3)
 
-List all organisations with optional search.
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_downloads` | List download files | `productId?` |
+| `create_download` | Create download record | `productId`, `name`, `description`, `category`, `version`, `blobPath`, `fileSize` |
+| `update_download` | Update download | `downloadId`, ... |
+| `delete_download` | Delete download | `downloadId` |
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `search` | string | No | Search by name or customer ID (e.g. `CUST-0001`) |
-| `limit` | number | No | Max results (default 10) |
+### Knowledge Base Tools (5)
 
-#### `get_organisation_detail`
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_kb_articles` | List articles | `productId?`, `type?`, `publishedOnly?` |
+| `create_kb_article` | Create article | `title`, `body`, `type`, `productId?`, `isPublished?` |
+| `update_kb_article` | Update article (creates version) | `articleId`, `title?`, `body?`, `type?`, `changeNote?` |
+| `list_kb_versions` | List article versions | `articleId` |
+| `restore_kb_version` | Restore to previous version | `articleId`, `versionId` |
+| `delete_kb_article` | Delete article | `articleId` |
 
-Get full details including members, subscriptions, licences, and environments.
+### Team & SLA Tools (8)
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `identifier` | string | Yes | Organisation UUID, customer ID (`CUST-0001`), or exact name |
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_teams` | List support teams | — |
+| `create_team` | Create support team | `name`, `description?`, `productId?`, `isDefault?` |
+| `update_team` | Update team | `teamId`, `name?`, `description?` |
+| `delete_team` | Delete team | `teamId` |
+| `add_team_member` | Add member to team | `teamId`, `userId` |
+| `toggle_team_escalation` | Toggle escalation role | `teamId`, `userId` |
+| `remove_team_member` | Remove from team | `teamId`, `userId` |
+| `list_sla_policies` | List SLA policies | — |
+| `update_sla_policy` | Update SLA thresholds | `policyId`, `firstResponseMinutes?`, `resolutionMinutes?`, `staleWarningMinutes?` |
 
-### Subscription Tools
+### User Tools (4)
 
-#### `list_subscriptions`
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_users` | Search users | `search?`, `staffOnly?`, `limit?` (default 20) |
+| `toggle_staff` | Grant/revoke staff access | `userId`, `isStaff` |
+| `update_user` | Update user details | `userId`, ... |
+| `delete_user` | Delete user | `userId` |
 
-List subscriptions with optional filters.
+### Customer Logo Tools (4)
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `status` | enum | No | `active`, `expired`, `cancelled`, `past_due` |
-| `expiringWithinDays` | number | No | Active subscriptions expiring within N days |
-| `limit` | number | No | Max results (default 20) |
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_customer_logos` | List all logos | — |
+| `create_customer_logo` | Create logo | `name`, `logoUrl`, `website?`, `sortOrder?` |
+| `update_customer_logo` | Update logo | `logoId`, ... |
+| `delete_customer_logo` | Delete logo | `logoId` |
 
-#### `extend_subscription`
+### Testimonial Tools (3)
 
-Extend a subscription end date and set status to active.
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_testimonials` | List all testimonials | — |
+| `update_testimonial` | Approve/reject testimonial | `testimonialId`, `status`, ... |
+| `delete_testimonial` | Delete testimonial | `testimonialId` |
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `subscriptionId` | string | Yes | Subscription ID (`SUB-xxxx`) |
-| `newEndDate` | string | Yes | New end date (ISO format) |
+### Content & Analytics Tools (3)
 
-### Licence Tools
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_contacts` | List contact form submissions | — |
+| `get_sentiment_stats` | Ticket sentiment statistics | — |
+| `get_feedback_stats` | Content feedback statistics | — |
 
-#### `generate_activation_code`
+### Dashboard (1)
 
-Generate an HMAC-signed activation code for a product environment.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `environmentCode` | string | Yes | Environment code (e.g. `A7A8-551B-4BA1-42AB`) |
-| `licenceType` | enum | Yes | `subscription`, `time_limited`, `unlimited` |
-| `subscriptionId` | string | Conditional | Required for subscription type |
-| `endDate` | string | Conditional | ISO date (required for subscription/time_limited unless `days` given) |
-| `days` | number | Conditional | Days from now (alternative to `endDate`) |
-
-#### `create_licence`
-
-Create a new licence for an organisation.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `orgId` | string | Yes | Organisation UUID |
-| `productId` | string | Yes | Product UUID |
-| `type` | enum | Yes | `subscription`, `time_limited`, `unlimited` |
-| `subscriptionId` | string | Conditional | For subscription type |
-| `expiryDate` | string | Conditional | For time_limited type |
-| `maxEnvironments` | number | No | Default 5 |
-
-#### `approve_environment_increase`
-
-Increase the maximum environment limit for a licence.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `licenceId` | string | Yes | Licence UUID |
-| `newLimit` | number | Yes | New max environments (1–50) |
-
-### Support Tools
-
-#### `list_support_tickets`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `status` | enum | No | `open`, `in_progress`, `resolved`, `closed` |
-| `limit` | number | No | Max results (default 20) |
-
-#### `get_ticket_detail`
-
-Get full ticket with all messages (including internal notes).
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `ticketId` | string | Yes | Ticket UUID |
-
-#### `reply_to_ticket`
-
-Reply to a support ticket. Supports visible replies and internal staff notes.
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `ticketId` | string | Yes | Ticket UUID |
-| `body` | string | Yes | Message text |
-| `staffUserId` | string | Yes | Staff user UUID |
-| `isInternal` | boolean | No | Internal note (default false) |
-
-#### `update_ticket_status`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `ticketId` | string | Yes | Ticket UUID |
-| `status` | enum | No | `open`, `in_progress`, `resolved`, `closed` |
-| `priority` | enum | No | `low`, `medium`, `high` |
-
-### Product Tools
-
-#### `list_products`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `activeOnly` | boolean | No | Only active products (default true) |
-
-#### `get_product_dashboard`
-
-Per-product stats: active/total subscriptions, licences, environments, open tickets, downloads (last 30 days).
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `productId` | string | Yes | Product UUID |
-
-#### `list_downloads`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `productId` | string | No | Filter by product |
-
-### User Tools
-
-#### `list_users`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `search` | string | No | Search by name or email |
-| `staffOnly` | boolean | No | Only staff users |
-| `limit` | number | No | Max results (default 20) |
-
-#### `toggle_staff`
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `userId` | string | Yes | User UUID |
-| `isStaff` | boolean | Yes | Grant or revoke staff access |
-
-### Dashboard
-
-#### `get_stats`
-
-No parameters. Returns system-wide statistics: organisations, users, active/total subscriptions, environments, open tickets.
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `get_stats` | System-wide statistics | — |
 
 ## Audit Logging
 
@@ -368,13 +257,10 @@ All mutating operations are logged to stdout as structured JSON:
   "tool": "extend_subscription",
   "params": {
     "subscriptionId": "SUB-A1B2C3D4",
-    "newEndDate": "2027-06-30",
-    "previousEndDate": "2026-06-30T00:00:00.000Z"
+    "newEndDate": "2027-06-30"
   }
 }
 ```
-
-Audited operations: `auth`, `extend_subscription`, `update_ticket_status`, `approve_environment_increase`, `toggle_staff`, `create_licence`.
 
 Logs are captured by Container Apps and shipped to Log Analytics (90-day retention).
 
@@ -393,23 +279,44 @@ Logs are captured by Container Apps and shipped to Log Analytics (90-day retenti
 
 ### VS Code / GitHub Copilot
 
-Add to your MCP settings:
+Add to MCP settings (discovers OAuth automatically via `.well-known` endpoints):
 
 ```json
 {
   "servers": {
     "{{PROJECT_NAME_LOWER}}": {
-      "url": "https://customerportalmcp.{{DOMAIN}}/mcp",
-      "headers": {
-        "Authorization": "Bearer <token>"
-      }
+      "url": "https://customerportalmcp.{{DOMAIN}}/mcp"
     }
   }
 }
 ```
 
-OAuth is handled automatically via the `.well-known` metadata endpoints.
+OAuth flow: PRM 404 → falls back to auth server metadata → DCR → Entra PKCE → `http://127.0.0.1` callback.
 
 ### Copilot Studio
 
-The server supports dynamic client registration (RFC 7591), returning the pre-registered Entra client ID. Copilot Studio requires **"Allow public client flows"** enabled in the Entra app registration.
+Create a custom connector with manual OAuth 2.0:
+
+| Setting | Value |
+|---------|-------|
+| Authorization URL | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/authorize` |
+| Token URL | `https://login.microsoftonline.com/{tenantId}/oauth2/v2.0/token` |
+| Client ID | `{{ENTRA_WORKFORCE_CLIENT_ID}}` |
+| Scope | `{{ENTRA_WORKFORCE_CLIENT_ID}}/.default openid offline_access` |
+| Enable PKCE | Yes |
+
+Requires **"Allow public client flows"** enabled and connector redirect URI added to public client redirect URIs.
+
+### Entra App Registration
+
+| Setting | Value |
+|---------|-------|
+| Sign-in audience | Single tenant (`AzureADMyOrg`) |
+| Application ID URI | `https://customerportalmcp.{{DOMAIN}}/mcp` |
+| Allow public client flows | Yes |
+| App role | `MCP.Admin` (User type) |
+| Web redirect URI | `https://github.com/login/oauth/authorize` |
+| Public client redirect URIs | `http://127.0.0.1`, Copilot Studio connector URI |
+| Implicit grant | Access tokens + ID tokens enabled |
+| API permissions | `User.Read` (Microsoft Graph, Delegated) |
+| Exposed scope | `access` (User consent) |

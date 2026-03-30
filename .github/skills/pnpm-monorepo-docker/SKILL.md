@@ -241,7 +241,7 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_DB: {{PROJECT_NAME_LOWER}}_portal
+      POSTGRES_DB: mojoppm
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
     ports:
@@ -256,7 +256,7 @@ services:
     ports:
       - '3001:3001'
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/{{PROJECT_NAME_LOWER}}_portal
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/mojoppm
       # ... other env vars
     depends_on:
       - db

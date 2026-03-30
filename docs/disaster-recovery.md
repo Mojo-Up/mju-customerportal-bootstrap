@@ -76,7 +76,7 @@ az postgres flexible-server restore \
 az containerapp secret set \
   --name {{PROJECT_NAME_LOWER}}-prod-api \
   --resource-group {{RESOURCE_GROUP}} \
-  --secrets database-url="postgresql://{{PROJECT_NAME_LOWER}}admin:<password>@{{PROJECT_NAME_LOWER}}-prod-postgres-restored.postgres.database.azure.com:5432/{{PROJECT_NAME_LOWER}}_portal?sslmode=require"
+  --secrets database-url="postgresql://mojoupadmin:<password>@{{PROJECT_NAME_LOWER}}-prod-postgres-restored.postgres.database.azure.com:5432/mojoup_portal?sslmode=require"
 
 # Restart the app to pick up the new secret
 az containerapp revision restart \
@@ -91,7 +91,7 @@ For additional safety or migration purposes:
 
 ```bash
 # Export database to a local file
-pg_dump "postgresql://{{PROJECT_NAME_LOWER}}admin:<password>@{{PROJECT_NAME_LOWER}}-prod-postgres.postgres.database.azure.com:5432/{{PROJECT_NAME_LOWER}}_portal?sslmode=require" \
+pg_dump "postgresql://mojoupadmin:<password>@{{PROJECT_NAME_LOWER}}-prod-postgres.postgres.database.azure.com:5432/mojoup_portal?sslmode=require" \
   --format=custom --file=backup_$(date +%Y%m%d_%H%M%S).dump
 
 # Restore from export
@@ -115,7 +115,7 @@ The storage account (`{{PROJECT_NAME_LOWER}}-prod-storage`) has three layers of 
 ```bash
 # List soft-deleted blobs
 az storage blob list \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --container-name downloads \
   --include d \
   --query "[?deleted]" \
@@ -123,7 +123,7 @@ az storage blob list \
 
 # Undelete a specific blob
 az storage blob undelete \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --container-name downloads \
   --name "<blob-path>"
 ```
@@ -133,7 +133,7 @@ az storage blob undelete \
 ```bash
 # List versions of a blob
 az storage blob list \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --container-name downloads \
   --prefix "<blob-path>" \
   --include v \
@@ -141,10 +141,10 @@ az storage blob list \
 
 # Promote a previous version to current
 az storage blob copy start \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --destination-container downloads \
   --destination-blob "<blob-path>" \
-  --source-uri "https://{{PROJECT_NAME_LOWER}}prodstorage.blob.core.windows.net/downloads/<blob-path>?versionid=<version-id>"
+  --source-uri "https://{{STORAGE_ACCOUNT}}.blob.core.windows.net/downloads/<blob-path>?versionid=<version-id>"
 ```
 
 ### Recover a Deleted Container
@@ -152,14 +152,14 @@ az storage blob copy start \
 ```bash
 # List soft-deleted containers
 az storage container list \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --include-deleted \
   --query "[?deleted]" \
   --output table
 
 # Restore a deleted container
 az storage container restore \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --name downloads \
   --deleted-version "<version>"
 ```
@@ -178,8 +178,8 @@ git checkout <commit-sha>
 
 # Rebuild and push
 az acr login --name {{ACR_NAME}}
-docker build -f packages/api/Dockerfile -t {{ACR_NAME}}.azurecr.io/{{PROJECT_NAME_LOWER}}-api:<commit-sha> .
-docker push {{ACR_NAME}}.azurecr.io/{{PROJECT_NAME_LOWER}}-api:<commit-sha>
+docker build -f packages/api/Dockerfile -t {{ACR_NAME}}.azurecr.io/mojoup-api:<commit-sha> .
+docker push {{ACR_NAME}}.azurecr.io/mojoup-api:<commit-sha>
 ```
 
 ## Application Configuration
@@ -303,7 +303,7 @@ az postgres flexible-server restore \
   --restore-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)"
 
 # 2. Connect and verify data
-psql "postgresql://{{PROJECT_NAME_LOWER}}admin:<password>@{{PROJECT_NAME_LOWER}}-backup-test.postgres.database.azure.com:5432/{{PROJECT_NAME_LOWER}}_portal?sslmode=require" \
+psql "postgresql://mojoupadmin:<password>@{{ORG_SCOPE}}-backup-test.postgres.database.azure.com:5432/mojoup_portal?sslmode=require" \
   -c "SELECT count(*) FROM organisations; SELECT count(*) FROM subscriptions; SELECT count(*) FROM licences;"
 
 # 3. Clean up test server
@@ -317,17 +317,17 @@ az postgres flexible-server delete \
 ```bash
 # Verify versioning is enabled
 az storage blob service-properties show \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --query "isVersioningEnabled"
 
 # Verify soft delete is enabled
 az storage blob service-properties show \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --query "deleteRetentionPolicy"
 
 # Verify a sample blob can be downloaded
 az storage blob download \
-  --account-name {{PROJECT_NAME_LOWER}}prodstorage \
+  --account-name {{STORAGE_ACCOUNT}} \
   --container-name downloads \
   --name "<known-blob-path>" \
   --file /tmp/verify-download

@@ -5,6 +5,9 @@
   "projectNameLower": "",
   "orgScope": "",
   "domain": "",
+  "productName": "",
+  "githubOrg": "",
+  "repoName": "",
   "entraCiamTenant": "",
   "entraCiamTenantId": "",
   "entraCiamClientId": "",
@@ -12,15 +15,21 @@
   "entraWorkforceClientId": "",
   "acrName": "",
   "resourceGroup": "",
+  "storageAccountName": "",
+  "acsEndpoint": "",
+  "acsSenderAddress": "",
   "brandPrimary": "#0d9488",
   "brandAccent": "#f97316",
-  "productName": "",
   "environments": ["dev", "production"],
   "branchStrategy": "trunk-based",
   "features": {
     "mcp": true,
     "stripe": true,
     "supportTickets": true,
-    "downloads": true
+    "downloads": true,
+    "email": true,
+    "knowledgeBase": true,
+    "testimonials": true,
+    "slaMonitoring": true
   }
 }

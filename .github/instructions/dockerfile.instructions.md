@@ -21,8 +21,8 @@ applyTo: "**/Dockerfile"
 - `--ignore-scripts` safe for Portal (no native modules)
 
 ## Build Order
-- shared FIRST: `pnpm --filter @{scope}/shared build`
-- Then target package: `pnpm --filter @{scope}/api build`
+- shared FIRST: `pnpm --filter @{{ORG_SCOPE}}/shared build`
+- Then target package: `pnpm --filter @{{ORG_SCOPE}}/api build`
 - Prisma: `cd packages/api && npx prisma generate` before API/MCP build
 
 ## Production Stage
@@ -32,8 +32,3 @@ applyTo: "**/Dockerfile"
 - Copy `prisma/` schema directory (Prisma client needs it at runtime)
 - Use non-root user: `USER node` or create dedicated user
 - Portal: Vite builds to static files → serve via `nginx:alpine`
-
-## Portal-Specific
-- Vite uses `ARG` (build-time) not `ENV` (runtime) for configuration
-- Pass via `--build-arg VITE_API_URL=https://api.example.com`
-- nginx config handles SPA fallback (`try_files $uri /index.html`)

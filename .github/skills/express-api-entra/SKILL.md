@@ -1,6 +1,6 @@
 ---
 name: express-api-entra
-description: 'Build Express APIs with Entra External ID (CIAM) authentication, RBAC middleware, Stripe webhooks, Zod validation, and multi-tenant org context. Use when: creating Express API with Entra auth, adding RBAC to routes, integrating Stripe webhooks, building multi-tenant APIs, debugging JWT validation with CIAM tenants.'
+description: 'Build Express APIs with Entra External ID (CIAM) authentication, RBAC middleware, Stripe webhooks, Zod validation, multi-tenant org context, file uploads (multer), Azure Communication Services email, and background services. Use when: creating Express API with Entra auth, adding RBAC to routes, integrating Stripe webhooks, building multi-tenant APIs, adding file upload endpoints, sending email via ACS, debugging JWT validation with CIAM tenants.'
 ---
 
 # Express API with Entra External ID & Stripe
@@ -69,14 +69,14 @@ Stripe signature verification requires the **raw request body**. If `express.jso
 
 ### Key Differences from Workforce Tenants
 
-| Aspect | Workforce (MCP Server) | External ID / CIAM (API) |
-|--------|----------------------|------------------|
-| Authority | `login.microsoftonline.com` | `{tenant}.ciamlogin.com` |
-| Issuer | `login.microsoftonline.com/{tid}/v2.0` | `{tid}.ciamlogin.com/{tid}/v2.0` |
-| JWKS URI | `login.microsoftonline.com/{tid}/discovery/v2.0/keys` | `{tenant}.ciamlogin.com/{tid}/discovery/v2.0/keys` |
-| Email claim | `preferred_username` | `emails[0]` or `email` |
-| Object ID | `oid` | `sub` (CIAM uses `sub` as primary) |
-| Use case | Internal staff/admin tools | Customer-facing portal |
+| Aspect      | Workforce (MCP Server)                                | External ID / CIAM (API)                           |
+| ----------- | ----------------------------------------------------- | -------------------------------------------------- |
+| Authority   | `login.microsoftonline.com`                           | `{tenant}.ciamlogin.com`                           |
+| Issuer      | `login.microsoftonline.com/{tid}/v2.0`                | `{tid}.ciamlogin.com/{tid}/v2.0`                   |
+| JWKS URI    | `login.microsoftonline.com/{tid}/discovery/v2.0/keys` | `{tenant}.ciamlogin.com/{tid}/discovery/v2.0/keys` |
+| Email claim | `preferred_username`                                  | `emails[0]` or `email`                             |
+| Object ID   | `oid`                                                 | `sub` (CIAM uses `sub` as primary)                 |
+| Use case    | Internal staff/admin tools                            | Customer-facing portal                             |
 
 ### Auth Middleware Implementation
 
@@ -129,10 +129,12 @@ export async function authenticate(req, res, next) {
 }
 
 function extractEmail(payload: any): string {
-  return payload.emails?.[0]         // CIAM format
-    ?? payload.email                  // Standard
-    ?? payload.preferred_username     // Workforce
-    ?? payload.upn;                   // Legacy
+  return (
+    payload.emails?.[0] ?? // CIAM format
+    payload.email ?? // Standard
+    payload.preferred_username ?? // Workforce
+    payload.upn
+  ); // Legacy
 }
 ```
 
@@ -172,24 +174,47 @@ export function requireOrgRole(...allowedRoles: OrgRole[]) {
 ### Role Hierarchy
 
 ```typescript
-// From shared types — use these constants in route guards
-MEMBER_MANAGEMENT_ROLES: ['owner', 'admin']
-BILLING_ROLES: ['owner', 'admin', 'billing']
-TECHNICAL_ROLES: ['owner', 'admin', 'technical']
-SUBSCRIPTION_VIEW_ROLES: ['owner', 'admin', 'billing', 'technical']
+// Organisation management (update, delete, member role changes)
+ORG_MANAGEMENT_ROLES: ['owner', 'admin']; // Admins cannot change owner role or transfer ownership
+// Member management (invite, remove)
+MEMBER_MANAGEMENT_ROLES: ['owner', 'admin'];
+BILLING_ROLES: ['owner', 'admin', 'billing'];
+TECHNICAL_ROLES: ['owner', 'admin', 'technical'];
+SUBSCRIPTION_VIEW_ROLES: ['owner', 'admin', 'billing', 'technical'];
 ```
 
 ### Usage
 
 ```typescript
-// Only owners can delete org
-router.delete('/:orgId', requireOrgRole('owner'), handler);
+// Owner and admin can update/delete org
+router.patch('/:orgId', requireOrgRole('owner', 'admin'), handler);
+router.delete('/:orgId', requireOrgRole('owner', 'admin'), handler);
 
-// Owner + admin can manage members
+// Owner + admin can manage members and roles
+// (admins cannot change owner role or transfer ownership — enforced in handler)
+router.patch('/:orgId/members/:userId/role', requireOrgRole('owner', 'admin'), handler);
 router.post('/:orgId/members', requireOrgRole('owner', 'admin'), handler);
 
 // All roles can view (empty array = any member)
 router.get('/:orgId', requireOrgRole(), handler);
+```
+
+### Admin Role Restrictions on Ownership
+
+When admins change member roles, the handler enforces additional guards:
+
+```typescript
+const callerRole = req.orgContext!.role;
+if (callerRole === 'admin') {
+  if (targetMembership.role === 'owner') {
+    res.status(403).json({ error: 'Only the owner can change the owner role' });
+    return;
+  }
+  if (newRole === 'owner') {
+    res.status(403).json({ error: 'Only the owner can transfer ownership' });
+    return;
+  }
+}
 ```
 
 ### Staff Bypass for Admin Routes
@@ -299,18 +324,18 @@ const { name } = parsed.data; // Typed and validated
 
 ## Error Response Conventions
 
-| Status | Meaning | When |
-|--------|---------|------|
-| 200 | Success | GET, PATCH |
-| 201 | Created | POST (new resource) |
-| 400 | Bad request | Validation failure, missing params |
-| 401 | Unauthorized | Missing/invalid/expired token |
-| 403 | Forbidden | RBAC denied, not a member, not staff |
-| 404 | Not found | Resource doesn't exist |
-| 409 | Conflict | Duplicate (e.g., already invited) |
-| 429 | Rate limited | Too many requests |
-| 503 | Service unavailable | Optional dependency not configured |
-| 500 | Server error | Unhandled (production hides details) |
+| Status | Meaning             | When                                 |
+| ------ | ------------------- | ------------------------------------ |
+| 200    | Success             | GET, PATCH                           |
+| 201    | Created             | POST (new resource)                  |
+| 400    | Bad request         | Validation failure, missing params   |
+| 401    | Unauthorized        | Missing/invalid/expired token        |
+| 403    | Forbidden           | RBAC denied, not a member, not staff |
+| 404    | Not found           | Resource doesn't exist               |
+| 409    | Conflict            | Duplicate (e.g., already invited)    |
+| 429    | Rate limited        | Too many requests                    |
+| 503    | Service unavailable | Optional dependency not configured   |
+| 500    | Server error        | Unhandled (production hides details) |
 
 ## Config Pattern
 
@@ -334,8 +359,12 @@ export const config = {
     tenantId: requireEnv('ENTRA_EXTERNAL_ID_TENANT_ID'),
     clientId: requireEnv('ENTRA_EXTERNAL_ID_CLIENT_ID'),
     // Use getters for derived URLs
-    get issuer() { return `https://${this.tenantId}.ciamlogin.com/${this.tenantId}/v2.0`; },
-    get jwksUri() { return `https://${tenant}.ciamlogin.com/${this.tenantId}/discovery/v2.0/keys`; },
+    get issuer() {
+      return `https://${this.tenantId}.ciamlogin.com/${this.tenantId}/v2.0`;
+    },
+    get jwksUri() {
+      return `https://${tenant}.ciamlogin.com/${this.tenantId}/discovery/v2.0/keys`;
+    },
   },
   stripe: {
     secretKey: requireEnv('STRIPE_SECRET_KEY'),
@@ -382,6 +411,120 @@ const subId = `SUB-${randomBytes(4).toString('hex').toUpperCase()}`;
 // Prisma: customerId Int @unique @default(autoincrement())
 const display = `CUST-${String(org.customerId).padStart(4, '0')}`;
 ```
+
+## Azure Communication Services (Email)
+
+The email service uses `@azure/communication-email` with graceful degradation — if ACS isn't configured, emails are logged to console.
+
+### Initialization Pattern
+
+```typescript
+import { EmailClient } from '@azure/communication-email';
+import { config } from '../lib/config.js';
+
+// Conditional initialization — null if ACS not configured
+const emailClient = config.email.enabled ? new EmailClient(config.email.connectionString) : null;
+
+const logoUrl = `${config.portalUrl}/assets/logo-black.png`;
+```
+
+### Send Pattern
+
+```typescript
+async function send(to: string, subject: string, body: string): Promise<void> {
+  if (!emailClient) {
+    console.log(`[Email] ACS not configured — skipping email to ${to}: ${subject}`);
+    return;
+  }
+  const message = {
+    senderAddress: config.email.senderAddress,
+    content: { subject, html: emailWrapper(body) },
+    recipients: { to: [{ address: to }] },
+  };
+  const poller = await emailClient.beginSend(message);
+  await poller.pollUntilDone();
+}
+```
+
+### Email Template Pattern
+
+All templates follow this structure — branded HTML wrapper with consistent styling:
+
+```typescript
+export async function sendTemplateEmail(
+  email: string,
+  contextData: string,
+): Promise<void> {
+  await send(
+    email,
+    `Subject line with ${contextData}`,
+    `<h2 style="margin:0 0 16px;color:#111827">Heading</h2>
+    <p style="color:#374151;line-height:1.6">Body text with <strong>${contextData}</strong>.</p>
+    <p><a href="${link}" style="display:inline-block;padding:12px 28px;background:#0891b2;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">CTA Button</a></p>`,
+  );
+}
+```
+
+### Config Pattern
+
+```typescript
+email: {
+  connectionString: optionalEnv('ACS_CONNECTION_STRING', ''),
+  senderAddress: optionalEnv('ACS_SENDER_ADDRESS', 'no-reply@{{ORG_SCOPE}}.com.au'),
+  get enabled() { return !!config.email.connectionString; },
+},
+```
+
+### Existing Templates
+
+| Function | Trigger | Recipients |
+| -------- | ------- | ---------- |
+| `sendOrgInvitation` | User invited to org | Invitee |
+| `sendTicketReplyNotification` | Staff replies to ticket | Ticket creator |
+| `sendTicketCreatedNotification` | Customer creates ticket | Escalation contacts |
+| `sendTicketAssignedNotification` | Ticket assigned | Assigned staff |
+| `sendContactFormNotification` | Contact form submitted | Staff recipients |
+| `sendSlaWarningNotification` | SLA approaching breach (cron) | Escalation + assignee |
+| `sendSlaBreachNotification` | SLA breached (cron) | Escalation + assignee |
+| `sendVersionReleaseNotification` | New product version (cron) | Licensed users |
+
+## Cron / Scheduled Jobs Pattern
+
+Background jobs are implemented as a **secret-protected HTTP endpoint** called by an external scheduler — not `setInterval` or in-process timers. This ensures jobs survive restarts and can be triggered independently.
+
+### Endpoint Pattern
+
+```typescript
+app.post('/api/cron/run', async (req, res) => {
+  const secret = req.headers['x-cron-secret'] || req.query.secret;
+  if (!secret || secret !== config.cronSecret) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const [sla, versions] = await Promise.all([
+    checkSlaNotifications(),
+    notifyNewVersions(),
+  ]);
+
+  console.log(`[Cron] SLA: ${sla.warnings} warnings, ${sla.breaches} breaches | Versions: ${versions} notified`);
+  res.json({ sla, versionsNotified: versions, timestamp: new Date().toISOString() });
+});
+```
+
+### Key Design Decisions
+
+- **External scheduler** (not `setInterval`): Container Apps can restart at any time; in-process timers reset on restart
+- **Secret protection**: Simple shared secret via `x-cron-secret` header — sufficient for server-to-server calls within Azure
+- **Idempotent**: Both jobs use database flags to prevent duplicate processing (SlaNotificationLog unique constraint, ProductVersion.notifiedAt)
+- **Combined endpoint**: All periodic jobs run from a single endpoint for simplicity — add new jobs to the `Promise.all`
+- **Recommended frequency**: Every 15 minutes for SLA monitoring
+
+### Adding a New Cron Job
+
+1. Create service in `packages/api/src/services/` with idempotent function
+2. Add to the `Promise.all` in `/api/cron/run`
+3. Return structured result for logging
 
 ## Docker Build — API
 

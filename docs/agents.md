@@ -16,7 +16,7 @@ The repository includes 10 custom Copilot agents organised into three tiers:
 ┌─────────────────────────────────────────────────────┐
 │                 Initialisation Agent                 │
 │  First-time setup: config, branding, Entra, Stripe, │
-│  SDLC environments, build verification              │
+│  ACS email, cron, SDLC, build verification          │
 │  Delegates to: infrastructure, database, github,    │
 │                portal                               │
 └──────────────────────┬──────────────────────────────┘
@@ -54,20 +54,22 @@ The first-time setup wizard. It:
 1. Reads `bootstrap.config.json` and collects missing values
 2. Applies `{{PLACEHOLDER}}` replacements across the entire codebase
 3. Sets up branding (colours, logo guidance)
-4. Guides Entra ID app registration (CIAM for customers, Workforce for staff)
+4. Guides Entra ID app registration (CIAM for customers, Workforce for staff/MCP)
 5. Guides Stripe configuration (products, webhooks)
-6. Provisions SDLC environments (dev → staging → production)
-7. Delegates to `@github` for CI/CD setup
-8. Delegates to `@database` for initial migration
-9. Runs build verification
-10. Generates setup report
+6. Guides Azure Communication Services setup (email templates, sender address)
+7. Configures cron job scheduling (SLA monitoring, version notifications)
+8. Provisions SDLC environments (dev → staging → production)
+9. Delegates to `@github` for CI/CD setup
+10. Delegates to `@database` for initial migration
+11. Runs build verification
+12. Generates setup report with remaining manual steps
 
 **Tools**: agent, search, read, edit, execute, web, todo
 **Sub-agents**: infrastructure, database, github, portal
 
 ### Database (`@database`)
 
-Manages the Prisma schema, migrations, and shared type synchronisation.
+Manages the Prisma schema (28 models, 13 enums, 19 migrations), migrations, and shared type synchronisation.
 
 **Scope**: `packages/api/prisma/`, `packages/shared/src/types/`, `packages/shared/src/validation/`
 **Skill**: `prisma-stripe-saas`
@@ -75,7 +77,7 @@ Manages the Prisma schema, migrations, and shared type synchronisation.
 
 ### Infrastructure (`@infrastructure`)
 
-Manages Azure Bicep, Docker, Container Apps, and environment configuration.
+Manages Azure Bicep, Docker, Container Apps, ACS, Entra External ID/Workforce tenants, and environment configuration.
 
 **Scope**: `infra/`, `docker-compose.yml`, `packages/*/Dockerfile`
 **Skill**: `pnpm-monorepo-docker`
@@ -83,7 +85,7 @@ Manages Azure Bicep, Docker, Container Apps, and environment configuration.
 
 ### Portal (`@portal`)
 
-Develops React SPA pages, components, auth flows, and Tailwind styling.
+Develops React SPA pages (36 pages: 19 main + 17 admin), components, auth flows, and Tailwind styling.
 
 **Scope**: `packages/portal/`
 **Skill**: `react-portal-msal`
@@ -91,7 +93,7 @@ Develops React SPA pages, components, auth flows, and Tailwind styling.
 
 ### MCP (`@mcp`)
 
-Develops MCP server tools, OAuth flow, and session management.
+Develops MCP server tools (66 tools), OAuth flow (RFC 9728/8414/7591), and session management.
 
 **Scope**: `packages/mcp-server/`
 **Skill**: `mcp-server-oauth`
@@ -99,7 +101,7 @@ Develops MCP server tools, OAuth flow, and session management.
 
 ### API (`@api`)
 
-Develops Express routes, middleware, Stripe integration, and RBAC.
+Develops Express routes (14 route files, ~60 endpoints), middleware, Stripe integration, ACS email (8 templates), cron jobs, and RBAC.
 
 **Scope**: `packages/api/src/`
 **Skill**: `express-api-entra`

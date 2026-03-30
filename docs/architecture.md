@@ -2,7 +2,7 @@
 
 ## Overview
 
-The {{PROJECT_NAME}} Customer Portal is a multi-product SaaS platform that provides customer self-service for subscription management, licence activation, file downloads, and support. It is built as a pnpm monorepo deployed to Azure Container Apps.
+The {{PROJECT_NAME}} Customer Portal is a multi-product SaaS platform that provides customer self-service for subscription management, licence activation, file downloads, knowledge base, support, and more. It is built as a pnpm monorepo deployed to Azure Container Apps.
 
 ```mermaid
 graph TB
@@ -13,20 +13,21 @@ graph TB
     end
 
     subgraph Azure["Azure Container Apps"]
-        Portal["Portal SPA<br/>portal.{{DOMAIN}}<br/>React + Vite + MSAL"]
+        Portal["Portal SPA<br/>portal.{{DOMAIN}}<br/>React 19 + Vite 6 + MSAL"]
         API["API Server<br/>api.{{DOMAIN}}<br/>Express + Prisma"]
-        MCP["MCP Server<br/>customerportalmcp.{{DOMAIN}}<br/>Streamable HTTP"]
+        MCP["MCP Server<br/>customerportalmcp.{{DOMAIN}}<br/>Streamable HTTP (66 tools)"]
     end
 
     subgraph Data["Data & Storage"]
-        DB[("PostgreSQL 16<br/>Flexible Server")]
-        Blob[("Azure Blob Storage<br/>Downloads")]
+        DB[("PostgreSQL 16<br/>Flexible Server<br/>26 models")]
+        Blob[("Azure Blob Storage<br/>5 containers")]
     end
 
     subgraph External["External Services"]
         Stripe["Stripe<br/>Billing & Checkout"]
         EntraCIAM["Entra External ID<br/>Customer Auth (CIAM)"]
         EntraWF["Entra Workforce<br/>Staff Auth (AAD)"]
+        ACS["Azure Communication<br/>Services (Email)"]
     end
 
     Browser --> Portal
@@ -39,6 +40,7 @@ graph TB
     API --> Blob
     API --> Stripe
     API --> EntraCIAM
+    API --> ACS
     MCP --> DB
     MCP --> EntraWF
 
@@ -56,6 +58,7 @@ graph TB
 ├── infra/
 │   ├── main.bicep            # Azure infrastructure (IaC)
 │   └── parameters.dev.json   # Dev parameter overrides
+├── docs/                     # Documentation
 └── packages/
     ├── shared/               # Types, Zod schemas, constants
     ├── api/                  # Express API + Prisma ORM
@@ -67,7 +70,7 @@ graph TB
 | -------------------- | ----------------------------------------------- | --------------- |
 | `@{{ORG_SCOPE}}/shared`     | Shared types, Zod validation schemas, constants | Build-time only |
 | `@{{ORG_SCOPE}}/api`        | Express API with Prisma ORM, Stripe integration | Node.js 24      |
-| `@{{ORG_SCOPE}}/portal`     | React + Vite SPA served via nginx               | nginx (static)  |
+| `@{{ORG_SCOPE}}/portal`     | React 19 + Vite 6 SPA served via nginx          | nginx (static)  |
 | `@{{ORG_SCOPE}}/mcp-server` | MCP server (Streamable HTTP) for AI agent tools | Node.js 24      |
 
 ## Authentication & Authorisation
@@ -104,6 +107,7 @@ sequenceDiagram
 - **Transport**: OAuth 2.0 over Streamable HTTP
 - **Compliance**: RFC 9728 (protected resource metadata), RFC 8414 (authorization server metadata), RFC 7591 (dynamic client registration)
 - **Token validation**: JWKS with RS256, accepts both v1 and v2 issuers
+- **App role**: `MCP.Admin` required
 
 ### Role-Based Access Control
 
@@ -111,8 +115,8 @@ Organisation membership roles control access to org-scoped resources:
 
 | Role        | Capabilities                             |
 | ----------- | ---------------------------------------- |
-| `owner`     | Full control, manage members, billing    |
-| `admin`     | Manage members, view billing             |
+| `owner`     | Full control, manage members, billing, transfer ownership |
+| `admin`     | Manage org settings, members, roles (cannot change owner or transfer ownership) |
 | `billing`   | Manage subscriptions, view licences      |
 | `technical` | Manage licences, environments, downloads |
 
@@ -125,28 +129,82 @@ Staff access (`isStaff` flag on User) grants access to admin endpoints and the M
 ```mermaid
 erDiagram
     Organisation ||--o{ OrgMembership : has
+    Organisation ||--o{ OrgInvitation : has
     Organisation ||--o{ Subscription : has
     Organisation ||--o{ Licence : has
     Organisation ||--o{ SupportTicket : has
+    Organisation ||--o{ DownloadLog : tracks
+
     User ||--o{ OrgMembership : belongs
+    User ||--o{ SupportTicket : creates
+    User ||--o{ TicketMessage : writes
+    User ||--o{ DownloadLog : logs
+    User ||--o{ ContentFeedback : gives
+    User ||--o{ Testimonial : submits
+
     Product ||--o{ ProductPricingPlan : has
     Product ||--o{ Subscription : has
     Product ||--o{ Licence : has
     Product ||--o{ FileDownload : has
+    Product ||--o{ SupportTicket : has
+    Product ||--o{ ProductVersion : releases
+    Product ||--o{ KnowledgeArticle : documents
+    Product ||--o{ SupportTeam : supports
+    Product ||--o{ ContactSubmission : receives
+
     Subscription ||--o{ Licence : grants
     Licence ||--o{ Environment : has
     Environment ||--o{ ActivationCode : generates
+
     SupportTicket ||--o{ TicketMessage : has
+    TicketMessage ||--o{ TicketAttachment : has
+
     FileDownload ||--o{ DownloadLog : has
+
+    KnowledgeArticle ||--o{ ArticleVersion : versioned
+    CustomerLogo ||--o{ CustomerLogoPlacement : placed
+    Testimonial ||--o{ TestimonialPlacement : placed
 ```
 
 ### Key Design Decisions
 
 - **Organisation-based multi-tenancy**: All billable resources (subscriptions, licences, tickets) belong to an Organisation, not a User
-- **Auto-increment customer ID**: `Organisation.customerId` provides a human-friendly numeric ID alongside the UUID primary key
+- **Auto-increment customer ID**: `Organisation.customerId` provides a human-friendly numeric ID (`CUST-0001`) alongside the UUID primary key
 - **Stripe as source of truth for billing**: Subscription state is synced from Stripe via webhooks; the portal never stores card details
-- **HMAC-SHA256 activation codes**: Licences generate signed activation codes compatible with product Code Apps (e.g., {{PRODUCT_NAME}})
+- **HMAC-SHA256 activation codes**: Licences generate signed activation codes compatible with product apps (e.g., {{PRODUCT_NAME}})
 - **Flexible product features**: `Product.features` and `ProductPricingPlan.features` use JSON columns for display flexibility
+- **SLA enforcement**: SlaPolicy per priority level with cron-based monitoring and escalation notifications
+- **Knowledge base versioning**: ArticleVersion tracks all edits with version numbers and change notes
+- **Team-based ticket routing**: Tickets auto-route to SupportTeam by product association
+
+### Model Summary
+
+| Category         | Models                                                                                                        | Count  |
+| ---------------- | ------------------------------------------------------------------------------------------------------------- | ------ |
+| **Core**         | Organisation, User, OrgMembership, OrgInvitation                                                              | 4      |
+| **Products**     | Product, ProductPricingPlan, ProductVersion                                                                   | 3      |
+| **Licensing**    | Subscription, Licence, Environment, ActivationCode                                                            | 4      |
+| **Support**      | SupportTicket, TicketMessage, TicketAttachment, SlaPolicy, SlaNotificationLog, SupportTeam, SupportTeamMember | 7      |
+| **Content**      | KnowledgeArticle, ArticleVersion, FileDownload, DownloadLog, ContentFeedback, ContactSubmission               | 6      |
+| **Social Proof** | CustomerLogo, CustomerLogoPlacement, Testimonial, TestimonialPlacement                                        | 4      |
+| **Total**        |                                                                                                               | **28** |
+
+### Enums
+
+| Enum                  | Values                                       |
+| --------------------- | -------------------------------------------- |
+| `ActivationStrategy`  | `none`, `mojo_ppm_hmac`                      |
+| `OrgRole`             | `owner`, `admin`, `billing`, `technical`     |
+| `SubscriptionPlan`    | `monthly`, `annual`                          |
+| `SubscriptionStatus`  | `active`, `expired`, `cancelled`, `past_due` |
+| `LicenceRecordType`   | `subscription`, `time_limited`, `unlimited`  |
+| `TicketStatus`        | `open`, `in_progress`, `resolved`, `closed`  |
+| `TicketPriority`      | `low`, `medium`, `high`                      |
+| `DownloadCategory`    | `solution`, `powerbi`, `guide`               |
+| `ArticleType`         | `faq`, `guide`, `announcement`               |
+| `ContentType`         | `article`, `download`                        |
+| `TestimonialStatus`   | `pending`, `approved`, `rejected`            |
+| `TestimonialCategory` | `GENERAL`, `SUPPORT`, `PRODUCT`              |
 
 ## Azure Infrastructure
 
@@ -157,7 +215,7 @@ graph TD
     subgraph RG["Resource Group: {{RESOURCE_GROUP}}"]
         ACR["Container Registry<br/>Basic"]
         PG[("PostgreSQL 16<br/>Burstable B1ms")]
-        SA[("Storage Account<br/>Standard_ZRS")]
+        SA[("Storage Account<br/>Standard_ZRS<br/>5 containers")]
         LA["Log Analytics<br/>90-day retention"]
 
         subgraph CAE["Container Apps Environment"]
@@ -180,20 +238,31 @@ graph TD
 | ----------------------------- | ------------------------------- | --------------------------- |
 | Azure Container Registry      | Basic                           | Docker image storage        |
 | PostgreSQL Flexible Server 16 | Burstable B1ms, 32GB            | Primary database            |
-| Storage Account (StorageV2)   | Standard_ZRS                    | File downloads (Blob)       |
+| Storage Account (StorageV2)   | Standard_ZRS                    | File storage (Blob)         |
+| Azure Communication Services  | —                               | Email notifications         |
 | Container Apps Environment    | —                               | Container orchestration     |
-| Log Analytics Workspace       | PerGB2018                       | Centralised logging         |
+| Log Analytics Workspace       | PerGB2018, 90-day retention     | Centralised logging         |
 | Container App: API            | 0.5 vCPU / 1GB, 1–3 replicas    | API server                  |
 | Container App: Portal         | 0.25 vCPU / 0.5GB, 1–2 replicas | SPA hosting                 |
 | Container App: MCP            | 0.25 vCPU / 0.5GB, 0–2 replicas | MCP server (scales to zero) |
+
+### Storage Containers
+
+| Container            | Access Level | Purpose                                    |
+| -------------------- | ------------ | ------------------------------------------ |
+| `downloads`          | Private      | Solution files, guides, Power BI templates |
+| `product-assets`     | Public blob  | Product icons and logos                    |
+| `kb-images`          | Public blob  | Knowledge base article images              |
+| `ticket-attachments` | Private      | Support ticket file attachments            |
+| `ticket-images`      | Public blob  | Inline ticket images                       |
 
 ### Networking
 
 - All Container Apps have external ingress with managed TLS certificates
 - Custom domains: `api.{{DOMAIN}}`, `portal.{{DOMAIN}}`, `customerportalmcp.{{DOMAIN}}`
 - PostgreSQL accepts connections from Azure services only (firewall rule `0.0.0.0`)
-- CORS on the API allows only `https://portal.{{DOMAIN}}`
-- Blob storage has public access disabled; downloads use time-limited SAS URLs
+- CORS on the API allows `portal.{{DOMAIN}}` + Power Apps/Dynamics domains
+- Blob storage: private containers use time-limited SAS URLs; public containers serve directly
 
 ### Auto-scaling
 
@@ -202,6 +271,131 @@ graph TD
 | API     | 1            | 3            | 50 concurrent HTTP requests |
 | Portal  | 1            | 2            | — (static content)          |
 | MCP     | 0            | 2            | 20 concurrent HTTP requests |
+
+## Services
+
+The API includes several background and utility services:
+
+| Service          | File                           | Purpose                                                                                                                                    |
+| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Email            | `services/email.ts`            | Send transactional emails via Azure Communication Services (invitations, ticket replies, SLA alerts, version notifications, contact forms) |
+| Activation       | `services/activation.ts`       | HMAC-SHA256 activation code generation and verification                                                                                    |
+| Stripe           | `services/stripe.ts`           | Stripe API client (v2025-02-24.acacia) for checkout and subscription management                                                            |
+| Ticket Blob      | `services/ticketBlob.ts`       | Azure Blob Storage for ticket attachments (upload, 15-min SAS URL generation; 10MB/file, 5 files/message)                                  |
+| SLA Checker      | `services/sla-checker.ts`      | Cron: monitors open tickets against SLA policies, sends warning/breach notifications to escalation team                                    |
+| Version Notifier | `services/version-notifier.ts` | Cron: emails customers about new product versions (finds unnotified ProductVersions)                                                       |
+
+## Scheduled Jobs (Cron)
+
+The API exposes a secret-protected cron endpoint that is called by an **external scheduler** (e.g. Azure Container Apps Job, GitHub Actions scheduled workflow, or any HTTP cron service like cron-job.org).
+
+### Endpoint
+
+```
+POST /api/cron/run
+Header: x-cron-secret: {CRON_SECRET}
+```
+
+### Jobs Executed
+
+| Job                  | Service               | What it does                                                                                                                                           |
+| -------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **SLA Checker**      | `sla-checker.ts`      | Finds open/in-progress tickets, checks age against SlaPolicy thresholds, creates SlaNotificationLog entries, emails escalation team + assignee via ACS |
+| **Version Notifier** | `version-notifier.ts` | Finds ProductVersions with `notifiedAt === null`, emails all users in orgs with active licences for that product, marks as notified                    |
+
+### Recommended Schedule
+
+| Environment | Frequency        | Method                                                                                |
+| ----------- | ---------------- | ------------------------------------------------------------------------------------- |
+| Production  | Every 15 minutes | Azure Container Apps Job or external HTTP cron                                        |
+| Development | Manual           | `curl -X POST http://localhost:3001/api/cron/run -H 'x-cron-secret: dev-cron-secret'` |
+
+### Configuration
+
+| Variable      | Default           | Description                                                                                  |
+| ------------- | ----------------- | -------------------------------------------------------------------------------------------- |
+| `CRON_SECRET` | `dev-cron-secret` | Shared secret between scheduler and API. Must be set to a strong random value in production. |
+
+### Response
+
+```json
+{
+  "sla": { "warnings": 2, "breaches": 1 },
+  "versionsNotified": 3,
+  "timestamp": "2026-03-30T10:00:00.000Z"
+}
+```
+
+### Deduplication
+
+Both jobs are idempotent:
+
+- SLA Checker uses `SlaNotificationLog` with `@@unique([ticketId, type])` to prevent duplicate alerts
+- Version Notifier sets `notifiedAt` on `ProductVersion` after sending, so re-runs skip already-notified versions
+
+## Azure Communication Services (Email)
+
+The API sends transactional emails via ACS using the `@azure/communication-email` SDK. Email is **optional** — if `ACS_CONNECTION_STRING` is not set, emails are logged to console but not sent.
+
+### Email Templates
+
+| Template        | Trigger                         | Recipients                             |
+| --------------- | ------------------------------- | -------------------------------------- |
+| Org Invitation  | User invited to organisation    | Invitee                                |
+| Ticket Reply    | Staff replies to support ticket | Ticket creator                         |
+| Ticket Created  | Customer creates support ticket | Assigned team escalation contacts      |
+| Ticket Assigned | Ticket assigned to staff member | Assigned staff                         |
+| Contact Form    | Customer submits contact form   | Staff (configured recipients)          |
+| SLA Warning     | Ticket approaching SLA breach   | Escalation contacts + assignee         |
+| SLA Breach      | Ticket has breached SLA         | Escalation contacts + assignee         |
+| Version Release | New product version published   | All users in orgs with active licences |
+
+### Configuration
+
+| Variable                | Required | Default                  | Description                    |
+| ----------------------- | -------- | ------------------------ | ------------------------------ |
+| `ACS_CONNECTION_STRING` | No       | `''` (disabled)          | ACS resource connection string |
+| `ACS_SENDER_ADDRESS`    | No       | `no-reply@{{ORG_SCOPE}}.com.au` | Verified sender address        |
+
+### ACS Resource Setup
+
+1. Create Azure Communication Services resource in Azure Portal
+2. Under **Email** → **Domains**, add and verify a custom domain (e.g. `{{DOMAIN}}`)
+3. Add sender address (e.g. `no-reply@{{ORG_SCOPE}}.com.au`) under the verified domain
+4. Copy the connection string from **Keys** → set as `ACS_CONNECTION_STRING`
+5. The `ACS_SENDER_ADDRESS` must match a verified sender in the ACS domain
+
+## Entra External ID (CIAM) Setup
+
+The portal and API authenticate customers via Microsoft Entra External ID (CIAM). This is a **separate tenant** from the workforce (staff) tenant.
+
+### Tenant Configuration
+
+| Setting         | Value                           |
+| --------------- | ------------------------------- |
+| Tenant type     | External (CIAM)                 |
+| Authority       | `{tenant}.ciamlogin.com`        |
+| Sign-up/sign-in | Email + password (self-service) |
+| Token version   | v2.0                            |
+
+### App Registration (Portal + API)
+
+| Setting         | Portal App                                              | API App  |
+| --------------- | ------------------------------------------------------- | -------- |
+| Type            | SPA                                                     | Web API  |
+| Redirect URIs   | `https://portal.{{DOMAIN}}`, `http://localhost:5173` | —        |
+| Expose scopes   | —                                                       | `access` |
+| API permissions | API app's `access` scope                                | —        |
+| Token claims    | `email`, `name`                                         | —        |
+
+### Required Environment Variables
+
+| Variable                      | Package | Description                                                |
+| ----------------------------- | ------- | ---------------------------------------------------------- |
+| `ENTRA_EXTERNAL_ID_TENANT_ID` | API     | CIAM tenant GUID                                           |
+| `ENTRA_EXTERNAL_ID_CLIENT_ID` | API     | API app registration client ID                             |
+| `VITE_ENTRA_CLIENT_ID`        | Portal  | SPA app registration client ID (compile-time)              |
+| `VITE_ENTRA_AUTHORITY`        | Portal  | `https://{tenant}.ciamlogin.com/{tenantId}` (compile-time) |
 
 ## CI/CD Pipeline
 
@@ -240,7 +434,13 @@ graph LR
 
 ### Azure Blob Storage
 
-- **Container**: `downloads` (private, no public access)
-- **Access**: Time-limited SAS URLs generated server-side
-- **Categories**: `solution`, `powerbi`, `guide`
-- **Audit**: All downloads logged in `download_logs` table
+- **5 containers**: `downloads` (private), `product-assets` (public), `kb-images` (public), `ticket-attachments` (private), `ticket-images` (public)
+- **Access**: Private containers use 15-minute SAS URLs generated server-side; public containers serve directly
+- **Protection**: ZRS replication, blob versioning, 30-day soft delete
+- **Upload limits**: Tickets — 10MB per file, 5 files per message; Admin uploads — 500MB for downloads, 5MB for images
+- **Audit**: File downloads logged in `download_logs` table
+
+### Azure Communication Services
+
+- **Email notifications**: Invitations, ticket replies (customer/staff), ticket creation (staff), ticket assignment, SLA warnings/breaches, new version announcements, contact form submissions
+- **Sender**: `no-reply@{{ORG_SCOPE}}.com.au` (configurable via `ACS_SENDER_ADDRESS`)

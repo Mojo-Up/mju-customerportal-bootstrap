@@ -1,6 +1,6 @@
 ---
-name: "API"
-description: "Express API development — routes, middleware, Stripe webhook integration, RBAC, authentication, activation codes, and service layer. Use when: adding API routes, modifying middleware, integrating Stripe, updating RBAC rules, working with activation codes."
+name: 'API'
+description: 'Express API development — routes, middleware, Stripe webhook integration, RBAC, authentication, activation codes, and service layer. Use when: adding API routes, modifying middleware, integrating Stripe, updating RBAC rules, working with activation codes.'
 tools:
   - search
   - read
@@ -19,10 +19,9 @@ You are the backend API specialist. You build and maintain the Express API serve
 - `packages/api/src/lib/prisma.ts` — Prisma client singleton
 - `packages/api/src/middleware/auth.ts` — JWT authentication middleware
 - `packages/api/src/middleware/rbac.ts` — role-based access control
-- `packages/api/src/routes/` — route handlers by domain
+- `packages/api/src/routes/` — 15 route files by domain
 - `packages/api/src/routes/webhooks/stripe.ts` — Stripe webhook handler
-- `packages/api/src/services/activation.ts` — HMAC activation code service
-- `packages/api/src/services/stripe.ts` — Stripe service layer
+- `packages/api/src/services/` — 6 services (activation, stripe, email, sla-checker, ticketBlob, version-notifier)
 - `packages/api/Dockerfile` — multi-stage Docker build
 
 ## Middleware Order (Critical)
@@ -32,7 +31,7 @@ The order in `index.ts` matters — getting this wrong causes subtle bugs:
 ```
 1. trust proxy (behind load balancer)
 2. helmet (security headers)
-3. CORS (allow portal origin)
+3. CORS (allow portal.{{DOMAIN}})
 4. Stripe webhook route with express.raw() — BEFORE json parser
 5. express.json() — AFTER webhook routes
 6. rate limiting
@@ -48,8 +47,8 @@ Follow the patterns established in the `express-api-entra` skill.
 ## Authentication
 
 - **Entra External ID (CIAM)** JWT validation
-- JWKS URI: `https://{tenant}.ciamlogin.com/{tenantId}/discovery/v2.0/keys`
-- Issuer: `https://{tenant}.ciamlogin.com/{tenantId}/v2.0`
+- JWKS URI: `https://{{ENTRA_CIAM_TENANT}}.ciamlogin.com/{tenantId}/discovery/v2.0/keys`
+- Issuer: `https://{{ENTRA_CIAM_TENANT}}.ciamlogin.com/{tenantId}/v2.0`
 - JIT user provisioning: upsert user on first authenticated request
 - Email claim fallback: `preferred_username` → `emails[0]` → `email` → `upn`
 
@@ -79,16 +78,32 @@ Follow the patterns established in the `express-api-entra` skill.
 ```
 /api/products          — public, product catalogue
 /api/versions          — public, version check (machine-to-machine)
-/api/checkin           — public, licence check-in
+/api/checkin           — public, licence check-in (10/hr rate limit)
+/api/contact           — public, contact form
+/api/kb                — public, knowledge base articles + search
+/api/customer-logos    — public, logo carousel data
+/api/testimonials      — public, approved testimonials
 /health                — health check
-/api/organisations     — authenticated, org CRUD + members
-/api/licences          — authenticated, licence management
+/api/me                — authenticated, user profile
+/api/organisations     — authenticated, org CRUD + members + invitations
+/api/licences          — authenticated, licence + environment management
 /api/billing           — authenticated, Stripe checkout + portal
-/api/tickets           — authenticated, support tickets
+/api/tickets           — authenticated, support tickets + messages + attachments
 /api/downloads         — authenticated, file downloads with SAS URLs
-/api/admin             — staff only, administration
+/api/feedback          — authenticated, content feedback (thumbs up/down)
+/api/upload            — authenticated, file uploads (tickets + admin)
+/api/admin             — staff only, full management (~60 endpoints)
 /api/webhooks/stripe   — Stripe webhook (raw body, signature verified)
 ```
+
+## Services
+
+- `activation.ts` — HMAC-SHA256 activation code generation/verification
+- `stripe.ts` — Stripe client (v2025-02-24.acacia)
+- `email.ts` — Azure Communication Services email templates (invitations, tickets, SLA, versions, contacts)
+- `sla-checker.ts` — Cron: monitors open tickets against SLA policies, sends warning/breach notifications
+- `ticketBlob.ts` — Azure Blob Storage for ticket attachments (upload, 15-min SAS URLs)
+- `version-notifier.ts` — Cron: emails customers about new product versions
 
 ## Validation
 

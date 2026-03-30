@@ -1,6 +1,6 @@
 ---
 name: react-portal-msal
-description: 'Build React SPA portals with MSAL authentication (Entra External ID / CIAM), multi-tenant org context, API client with Bearer tokens, admin routing, Vite config with dev proxy, Tailwind CSS, and nginx SPA hosting. Use when: creating React portal with MSAL, debugging CIAM auth in SPA, building multi-tenant UI with org switcher, configuring Vite proxy for API, setting up nginx for SPA.'
+description: 'Build React SPA portals with MSAL authentication (Entra External ID / CIAM), multi-tenant org context, API client with Bearer tokens, admin routing, Vite config with dev proxy, Tailwind CSS, and nginx SPA hosting. The current portal has 36 pages (18 admin), 4 reusable components, and markdown rendering. Use when: creating React portal with MSAL, debugging CIAM auth in SPA, building multi-tenant UI with org switcher, configuring Vite proxy for API, setting up nginx for SPA.'
 ---
 
 # React Portal with MSAL & Multi-Tenant Org Context
