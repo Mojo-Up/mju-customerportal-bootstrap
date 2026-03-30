@@ -2,9 +2,20 @@
 name: 'Infrastructure'
 description: 'Azure Bicep IaC, Docker multi-stage builds, Container Apps configuration, environment management, and local dev setup via docker-compose. Use when: modifying infrastructure, updating Dockerfiles, changing Container Apps scaling or secrets, managing environment parameters, updating docker-compose.'
 tools:
-  - search
-  - read
-  - edit
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
+  - mcp_bicep_*
+  - mcp_microsoft_azu_search
   - execute
 ---
 

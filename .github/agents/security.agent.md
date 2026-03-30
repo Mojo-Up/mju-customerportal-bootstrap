@@ -2,7 +2,13 @@
 name: 'Security'
 description: 'Security review and validation agent. Performs OWASP Top 10 analysis, authentication/authorisation review, input validation audit, secrets management check, CSP/CORS review, and dependency analysis. Use when: reviewing security posture, validating auth flows, auditing input handling, checking for vulnerabilities, pre-deployment security review.'
 tools:
-  - search
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
   - read
 ---
 

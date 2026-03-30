@@ -2,9 +2,18 @@
 name: 'MCP'
 description: 'MCP server development — tool definitions, OAuth 2.0 authentication, session management, rate limiting, and audit logging. Use when: adding MCP tools, modifying OAuth flow, updating session management, configuring rate limits, debugging MCP auth.'
 tools:
-  - search
-  - read
-  - edit
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
   - execute
 ---
 

@@ -2,10 +2,20 @@
 name: 'GitHub'
 description: 'Git workflows, GitHub Actions CI/CD, secrets management, branch protection, PR workflows, OIDC federated identity, and environment configuration. Use when: modifying CI/CD pipelines, setting up GitHub secrets, configuring branch protection, managing environments, creating PR/issue templates, working with git.'
 tools:
-  - search
-  - read
-  - edit
-  - execute
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
+  - fetch_webpage
+  - mcp_github_*
   - web
 ---
 

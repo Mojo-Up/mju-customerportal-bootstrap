@@ -2,9 +2,20 @@
 name: 'Portal'
 description: 'React SPA development — pages, components, MSAL authentication, routing, Tailwind CSS styling, Vite configuration, and nginx hosting. Use when: creating portal pages, modifying components, updating auth flow, changing styles or branding, configuring Vite or nginx.'
 tools:
-  - search
-  - read
-  - edit
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
+  - fetch_webpage
+  - mcp_playwright_*
   - execute
 ---
 

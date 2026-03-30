@@ -2,9 +2,18 @@
 name: 'Database'
 description: 'Prisma schema design, migrations, seed data, shared type synchronisation, and query optimisation for the multi-tenant SaaS database. Use when: modifying the database schema, creating migrations, updating shared types to match schema changes, optimising queries, seeding data.'
 tools:
-  - search
-  - read
-  - edit
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
   - execute
 ---
 

@@ -2,11 +2,16 @@
 name: 'Planner'
 description: 'Orchestrator agent that decomposes feature requests into component tasks, delegates to specialised agents (database, infrastructure, portal, mcp, api, github), and invokes security and ui-review agents as quality gates before completion. Use when: planning a new feature, coordinating cross-cutting changes, running a full validation pass.'
 tools:
-  - agent
-  - search
-  - read
-  - web
-  - todo
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - fetch_webpage
+  - manage_todo_list
+  - memory
+  - runSubagent
+  - search_subagent
 agents:
   - database
   - infrastructure

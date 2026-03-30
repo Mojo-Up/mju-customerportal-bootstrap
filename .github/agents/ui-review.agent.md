@@ -2,7 +2,13 @@
 name: 'UI Review'
 description: 'UI quality and WCAG 2.1 AA accessibility review agent. Reviews semantic HTML, keyboard navigation, colour contrast, ARIA attributes, responsive design, loading/error states, and design token consistency. Use when: reviewing UI accessibility, auditing WCAG compliance, checking responsive design, validating consistent styling.'
 tools:
-  - search
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - get_errors
+  - mcp_playwright_*
   - read
 ---
 

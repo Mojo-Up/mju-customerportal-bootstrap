@@ -2,9 +2,18 @@
 name: 'API'
 description: 'Express API development — routes, middleware, Stripe webhook integration, RBAC, authentication, activation codes, and service layer. Use when: adding API routes, modifying middleware, integrating Stripe, updating RBAC rules, working with activation codes.'
 tools:
-  - search
-  - read
-  - edit
+  - create_file
+  - replace_string_in_file
+  - multi_replace_string_in_file
+  - read_file
+  - list_dir
+  - file_search
+  - grep_search
+  - semantic_search
+  - run_in_terminal
+  - get_errors
+  - manage_todo_list
+  - memory
   - execute
 ---
 
