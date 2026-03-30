@@ -239,44 +239,97 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public routes */}
+        {/* Public routes (no auth) */}
         <Route path="/" element={<LandingPage />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/products" element={<ProductsPage />} />
+        <Route path="/products/:slug" element={<ProductDetailPage />} />
 
-        {/* Protected routes (require auth) */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<AppLayout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/licences" element={<LicencesPage />} />
-            <Route path="/billing" element={<BillingPage />} />
-            <Route path="/support" element={<SupportPage />} />
-            <Route path="/settings" element={<OrgSettingsPage />} />
+        {/* Post-login redirect handler (auth, OrgProvider, no layout) */}
+        <Route path="/post-login" element={
+          <ProtectedRoute><OrgProvider><PostLoginRouter /></OrgProvider></ProtectedRoute>
+        } />
 
-            {/* Admin routes — backend enforces isStaff */}
-            <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route path="/admin/products" element={<AdminProductsPage />} />
-            <Route path="/admin/organisations" element={<AdminOrganisationsPage />} />
-            <Route path="/admin/organisations/:orgId" element={<AdminOrgDetailPage />} />
-            <Route path="/admin/users" element={<AdminUsersPage />} />
-          </Route>
+        {/* Protected routes (auth + OrgProvider + AppLayout) */}
+        <Route element={<ProtectedRoute><OrgProvider><AppLayout /></OrgProvider></ProtectedRoute>}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/licences" element={<LicencesPage />} />
+          <Route path="/support" element={<SupportPage />} />
+          <Route path="/support/:ticketId" element={<TicketDetailPage />} />
+          <Route path="/downloads" element={<DownloadsPage />} />
+          <Route path="/settings" element={<OrgSettingsPage />} />
+          <Route path="/billing" element={<BillingPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
+          <Route path="/kb" element={<KnowledgeBasePage />} />
+          <Route path="/kb/:slug" element={<ArticlePage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
+
+          {/* Admin routes — backend enforces isStaff */}
+          <Route path="/admin" element={<AdminDashboardPage />} />
+          <Route path="/admin/products" element={<AdminProductsPage />} />
+          <Route path="/admin/products/:productId/versions" element={<AdminProductVersionsPage />} />
+          <Route path="/admin/organisations" element={<AdminOrganisationsPage />} />
+          <Route path="/admin/organisations/:orgId" element={<AdminOrgDetailPage />} />
+          <Route path="/admin/support" element={<AdminSupportPage />} />
+          <Route path="/admin/support/tickets" element={<AdminTicketsPage />} />
+          <Route path="/admin/support/tickets/:ticketId" element={<AdminTicketDetailPage />} />
+          <Route path="/admin/support/my-tickets" element={<AdminMyTicketsPage />} />
+          <Route path="/admin/support/team-tickets" element={<AdminTeamTicketsPage />} />
+          <Route path="/admin/downloads" element={<AdminDownloadsPage />} />
+          <Route path="/admin/kb" element={<AdminKBPage />} />
+          <Route path="/admin/contacts" element={<AdminContactsPage />} />
+          <Route path="/admin/customer-logos" element={<AdminCustomerLogosPage />} />
+          <Route path="/admin/testimonials" element={<AdminTestimonialsPage />} />
+          <Route path="/admin/sla-settings" element={<AdminSLASettingsPage />} />
+          <Route path="/admin/users" element={<AdminUsersPage />} />
         </Route>
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
-  );
-}
-
-function ProtectedRoute() {
-  return (
-    <AuthenticatedTemplate>
-      <OrgProvider>
-        <Outlet />
-      </OrgProvider>
-    </AuthenticatedTemplate>
   );
 }
 ```
 
 **Important**: Admin routes have NO frontend guard — the backend API enforces `requireStaff`. The frontend only hides the admin nav link for non-staff users. This is the correct pattern (never rely solely on frontend auth checks).
+
+### Deep Link Flows
+
+Email notifications and Stripe redirects link back to specific portal routes. All deep links use `PORTAL_URL` from the API's config.
+
+**Post-login routing** (`/post-login`):
+1. If no organisation → redirect to `/onboarding`
+2. If pending purchase in `localStorage` → create Stripe checkout session → redirect to Stripe
+3. Otherwise → redirect to `/dashboard`
+
+**Invite acceptance** (`/accept-invite/:token`):
+- Route is inside `<ProtectedRoute>` — unauthenticated users must log in first
+- After login, the user navigates back to the invite link
+- `AcceptInvitePage` POSTs to API, which validates token email matches authenticated user
+- On success → refetch OrgContext → redirect to `/dashboard`
+
+**Checkout return** (`/checkout/success`):
+- `CheckoutSuccessPage` reads `session_id` from query params
+- Displays subscription confirmation
+
+**Email deep links** (must match React Router routes):
+| Email Target | Route | Auth Required |
+|-------------|-------|---------------|
+| Customer ticket | `/support/:ticketId` | Yes |
+| Customer downloads | `/downloads` | Yes |
+| Customer invite | `/accept-invite/:token` | Yes |
+| Staff ticket | `/admin/support/tickets/:ticketId` | Yes + isStaff |
+
+**Stripe redirect URLs** (set in API, must match routes):
+| Flow | Route |
+|------|-------|
+| Checkout success | `/checkout/success` |
+| Checkout cancel | `/products/:slug` |
+| Billing portal return | `/billing` |
 
 ## Data Fetching Pattern
 

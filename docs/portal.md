@@ -173,6 +173,44 @@ The main layout for all authenticated pages:
 | `TableOfContents` | `components/TableOfContents.tsx` | Auto-generated article TOC from headings |
 | `TestimonialForm` | `components/TestimonialForm.tsx` | Submit testimonial form (quote, rating, category) |
 
+## Deep Link Handling
+
+The portal receives deep links from email notifications, Stripe redirects, and auth callbacks. Key handling patterns:
+
+### Invite Acceptance Flow
+
+```
+Email link → /accept-invite/{token}
+  ├── If authenticated → AcceptInvitePage mounts → POST /api/organisations/invitations/{token}/accept → refetch orgs → /dashboard
+  └── If not authenticated → ProtectedRoute redirects to Entra CIAM login
+       → MSAL returns to origin (/) → user navigates back to invite link
+```
+
+The `/accept-invite/:token` route is inside `<ProtectedRoute>`, so unauthenticated users must log in first. The invite token is a UUID with 7-day expiry. The API validates the token email matches the authenticated user's email.
+
+### Checkout Flow
+
+```
+Product page → "Subscribe" → POST /api/:orgId/billing/checkout-session → Stripe Checkout
+  ├── Success → /checkout/success?session_id={id} → CheckoutSuccessPage (confirms subscription)
+  └── Cancel → /products/{slug} → back to product page
+```
+
+If the user isn't authenticated when clicking "Subscribe", the pending purchase is saved to `localStorage` via `pendingPurchase.ts`. After login, `PostLoginRouter` picks it up and initiates checkout.
+
+### Billing Portal Flow
+
+```
+Billing page → "Manage Subscription" → POST /api/:orgId/billing/portal-session → Stripe Portal
+  └── Return → /billing → BillingPage
+```
+
+### Email Notification Links
+
+All email deep links use `PORTAL_URL` from API configuration:
+- **Customer links**: `/support/:ticketId` (ticket replies), `/downloads` (version releases), `/accept-invite/:token` (invites)
+- **Staff links**: `/admin/support/tickets/:ticketId` (ticket created/assigned/SLA alerts)
+
 ## Styling
 
 - **TailwindCSS 4** with {{PROJECT_NAME}} design tokens

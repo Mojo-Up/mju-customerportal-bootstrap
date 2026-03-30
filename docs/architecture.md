@@ -444,3 +444,109 @@ graph LR
 
 - **Email notifications**: Invitations, ticket replies (customer/staff), ticket creation (staff), ticket assignment, SLA warnings/breaches, new version announcements, contact form submissions
 - **Sender**: `no-reply@{{ORG_SCOPE}}.com.au` (configurable via `ACS_SENDER_ADDRESS`)
+
+## Product-Centric Data Model
+
+The platform is **multi-product**: every billable and content entity hangs off a `Product`. Each product has its own subscriptions, licences, downloads, knowledge base, support team, versions, customer logos, and testimonials.
+
+```mermaid
+graph TD
+    Product["Product<br/>name, slug, activationStrategy"]
+    Product --> PricingPlan["ProductPricingPlan<br/>stripePriceId, interval, price"]
+    Product --> Subscription["Subscription<br/>per org, per product"]
+    Product --> Licence["Licence<br/>per org, per product"]
+    Licence --> Environment["Environment<br/>environmentCode (XXXX-XXXX-XXXX-XXXX)"]
+    Environment --> ActivationCode["ActivationCode<br/>HMAC-SHA256 signed code"]
+    Subscription --> Licence
+    Product --> FileDownload["FileDownload<br/>solution, powerbi, guide"]
+    Product --> ProductVersion["ProductVersion<br/>semver, release notes"]
+    Product --> KnowledgeArticle["KnowledgeArticle<br/>faq, guide, announcement"]
+    Product --> SupportTeam["SupportTeam<br/>per-product routing"]
+    Product --> ContactSubmission
+    Product --> CustomerLogoPlacement
+    Product --> TestimonialPlacement
+```
+
+### Product → Licence → Environment → Activation Code
+
+This is the per-product licensing chain:
+
+1. **Product** defines `activationStrategy` (`none` or `mojo_ppm_hmac`) — determines whether activation codes can be generated
+2. **Subscription** (Stripe-managed) is created per organisation per product via webhook on `checkout.session.completed`
+3. **Licence** is created alongside the subscription (1:1 for subscription type) and links to both the organisation and product
+4. **Environments** are registered by members against a licence (up to `maxEnvironments`). Each has a unique `environmentCode` in `XXXX-XXXX-XXXX-XXXX` hex format
+5. **Activation Codes** are generated per environment using HMAC-SHA256, embedding the licence type and expiry date
+
+### Activation Code Generation
+
+The activation code is a **product-agnostic** signed payload — the product identity flows through the licence → subscription chain, not the code itself:
+
+```
+Payload: {fingerprint}|{licenceTypeCode}|{endDate or subscriptionId}
+Code:    base64url(payloadBytes).base64url(HMAC-SHA256(payloadBytes, hmacKey))
+```
+
+Where:
+- `fingerprint` = environment code with hyphens stripped, lowercased (16 hex chars)
+- `licenceTypeCode` = `100000001` (time-limited), `100000002` (unlimited), `100000003` (subscription)
+- `endDate` = subscription end date or manual expiry, set to 23:59:59 UTC
+
+Portal users can only generate codes for **subscription** licences. Staff can generate codes for any licence type via admin endpoints.
+
+### Check-in (Product App → API)
+
+Product applications (e.g. {{PRODUCT_NAME}}) call `POST /api/checkin` daily with their activation code. The API:
+1. Verifies the HMAC signature
+2. Looks up the environment, licence, and subscription
+3. Returns a **renewed activation code** (fresh dates), licence status, contact emails, and update availability
+4. Rate limited to 10 requests/hour per IP
+
+### What Varies Per Product
+
+When adding a new product, these entities are product-scoped:
+
+| Entity | Relationship | Impact |
+|--------|-------------|--------|
+| `ProductPricingPlan` | Product has many | Different pricing per product |
+| `Subscription` | Per org, per product | Org can subscribe to multiple products |
+| `Licence` | Per org, per product | Each product grants a separate licence |
+| `FileDownload` | Product has many | Downloads categorised per product |
+| `ProductVersion` | Product has many | Independent release cycles |
+| `KnowledgeArticle` | Optional product scope | Can be product-specific or general |
+| `SupportTeam` | 1:1 with product | Tickets auto-route to product team |
+| `SupportTicket` | Optional product scope | Customer selects product when filing |
+| `CustomerLogoPlacement` | Product or landing page | Logos shown on specific product pages |
+| `TestimonialPlacement` | Product or landing page | Testimonials shown per product |
+
+## Deep Links
+
+All deep links use `PORTAL_URL` (env var, default `http://localhost:5173`). The portal is an SPA with client-side routing — all paths must be handled by React Router.
+
+### Email Deep Links
+
+| Email Template | Deep Link Pattern | Portal Route | Recipients |
+|---------------|-------------------|--------------|------------|
+| Org Invitation | `${PORTAL_URL}/accept-invite/${token}` | `/accept-invite/:token` | Invitee (must be authenticated) |
+| Ticket Reply (customer) | `${PORTAL_URL}/support/${ticketId}` | `/support/:ticketId` | Ticket creator |
+| Ticket Created (staff) | `${PORTAL_URL}/admin/support/tickets/${ticketId}` | `/admin/support/tickets/:ticketId` | Support team escalation contacts |
+| Ticket Assigned (staff) | `${PORTAL_URL}/admin/support/tickets/${ticketId}` | `/admin/support/tickets/:ticketId` | Assigned staff member |
+| SLA Warning (staff) | `${PORTAL_URL}/admin/support/tickets/${ticketId}` | `/admin/support/tickets/:ticketId` | Escalation contacts + assignee |
+| SLA Breach (staff) | `${PORTAL_URL}/admin/support/tickets/${ticketId}` | `/admin/support/tickets/:ticketId` | Escalation contacts + assignee |
+| Version Release | `${PORTAL_URL}/downloads` | `/downloads` | All users with active licences |
+| Contact Form | *(no deep link — email content only)* | — | Staff recipients |
+
+### Stripe Redirect URLs
+
+| Flow | URL Pattern | Portal Route |
+|------|------------|---------------|
+| Checkout Success | `${PORTAL_URL}/checkout/success?session_id={CHECKOUT_SESSION_ID}` | `/checkout/success` |
+| Checkout Cancel | `${PORTAL_URL}/products/${slug}` | `/products/:slug` |
+| Billing Portal Return | `${PORTAL_URL}/billing` | `/billing` |
+
+### Auth Flow Deep Links
+
+| Flow | Description | Target |
+|------|------------|--------|
+| MSAL Login Redirect | After Entra CIAM login, MSAL returns to `window.location.origin` | `/` (Landing) |
+| Post-Login Router | If pending purchase in localStorage → Stripe checkout; if no org → `/onboarding`; else → `/dashboard` | `/post-login` |
+| Invite Accept | User clicks invite email → `/accept-invite/:token` → if not logged in, saves path and redirects to login | `/accept-invite/:token` |

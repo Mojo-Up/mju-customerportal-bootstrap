@@ -1,6 +1,6 @@
 ---
 name: prisma-stripe-saas
-description: 'Design Prisma schemas for multi-tenant SaaS with Stripe billing, licence management, environment activation with HMAC codes, support tickets with SLA, knowledge base, testimonials, and subscription lifecycle. The current schema has 26 models, 12 enums, and 19 migrations. Use when: designing Prisma schema for SaaS, integrating Stripe subscriptions with database, building licence/activation systems, managing multi-tenant data isolation, handling Stripe webhook-driven state sync.'
+description: 'Design Prisma schemas for multi-tenant SaaS with Stripe billing, licence management, environment activation with HMAC codes, support tickets with SLA, knowledge base, testimonials, and subscription lifecycle. The current schema has 28 models, 13 enums, and 19 migrations. Use when: designing Prisma schema for SaaS, integrating Stripe subscriptions with database, building licence/activation systems, managing multi-tenant data isolation, handling Stripe webhook-driven state sync.'
 ---
 
 # Prisma Schema for Multi-Tenant SaaS with Stripe
@@ -110,7 +110,7 @@ model OrgInvitation {
 model Subscription {
   id                   String             @id  // Custom format: SUB-XXXXX
   orgId                String             @db.Uuid
-  productId            String?            @db.Uuid
+  productId            String             @db.Uuid
   plan                 SubscriptionPlan
   status               SubscriptionStatus
   startDate            DateTime
@@ -121,7 +121,8 @@ model Subscription {
   updatedAt            DateTime           @updatedAt
 
   org     Organisation @relation(fields: [orgId], references: [id])
-  licence Licence?     // 1:1 relationship
+  product Product      @relation(fields: [productId], references: [id])
+  licences Licence[]
 }
 
 enum SubscriptionStatus {
@@ -181,13 +182,15 @@ await prisma.$transaction([
 model Licence {
   id              String           @id @default(uuid()) @db.Uuid
   orgId           String           @db.Uuid
+  productId       String           @db.Uuid
   type            LicenceRecordType
-  subscriptionId  String?          @unique  // 1:1 with Subscription
+  subscriptionId  String?          // Links to Subscription.id
   expiryDate      DateTime?
   maxEnvironments Int              @default(5)
   createdAt       DateTime         @default(now())
 
   org            Organisation      @relation(fields: [orgId], references: [id])
+  product        Product           @relation(fields: [productId], references: [id])
   subscription   Subscription?     @relation(fields: [subscriptionId], references: [id])
   environments   Environment[]
   activationCodes ActivationCode[]
@@ -216,32 +219,37 @@ enum LicenceRecordType {
 
 ### HMAC Activation Code Generation
 
-Activation codes are deterministic HMAC-SHA256 signatures — the same inputs always produce the same code:
+Activation codes are HMAC-SHA256 signed payloads — the code embeds the licence type and expiry:
 
 ```typescript
 function generateActivationCode(
   environmentCode: string,
   licenceType: LicenceType,
   endDate?: Date,
+  subscriptionId?: string,
 ): string {
   // Normalize fingerprint: strip hyphens, lowercase
   const fingerprint = environmentCode.replace(/-/g, '').toLowerCase();
 
-  // Build payload
-  const parts = [fingerprint, String(licenceType)];
-  if (endDate) {
-    const d = new Date(endDate);
-    d.setUTCHours(23, 59, 59, 0); // End of day UTC
-    parts.push(d.toISOString());
+  // Build pipe-delimited payload
+  let payload: string;
+  if (licenceType === LicenceType.Subscription) {
+    const d = new Date(endDate!);
+    d.setUTCHours(23, 59, 59, 0);
+    payload = `${fingerprint}|${licenceType}|${subscriptionId}|${d.toISOString()}`;
+  } else if (licenceType === LicenceType.TimeLimited) {
+    const d = new Date(endDate!);
+    d.setUTCHours(23, 59, 59, 0);
+    payload = `${fingerprint}|${licenceType}|${d.toISOString()}`;
+  } else {
+    payload = `${fingerprint}|${licenceType}|unlimited`;
   }
 
-  const payload = parts.join('|');
-  const hmac = createHmac('sha256', HMAC_KEY).update(payload).digest();
-  return base64UrlEncode(hmac);
-}
+  const payloadBytes = Buffer.from(payload, 'utf-8');
+  const signature = createHmac('sha256', HMAC_KEY).update(payloadBytes).digest();
 
-function base64UrlEncode(buffer: Buffer): string {
-  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); // Strip padding
+  // Output: base64url(payload).base64url(signature)
+  return `${base64UrlEncode(payloadBytes)}.${base64UrlEncode(signature)}`;
 }
 ```
 
@@ -419,3 +427,32 @@ model FileDownload {
 ```
 
 Generate SAS URLs for secure, time-limited downloads rather than proxying the blob through the API.
+
+## Product-Scoped Data Model
+
+The platform is **multi-product** — most entities are scoped to a `Product`. When adding a new product, it automatically gets its own:
+
+| Entity | Scoping | Notes |
+|--------|---------|-------|
+| `ProductPricingPlan` | Required (productId) | Each product has independent pricing plans linked to Stripe Price IDs |
+| `Subscription` | Required (orgId + productId) | An org can subscribe to multiple products independently |
+| `Licence` | Required (orgId + productId) | Each subscription creates one licence for that specific product |
+| `Environment` | Via Licence | Environments are registered per licence (per product per org) |
+| `ActivationCode` | Via Environment | Activation codes are generated per environment, carrying licence type + dates |
+| `FileDownload` | Required (productId) | Downloads (solution, Power BI, guide) grouped by product |
+| `ProductVersion` | Required (productId) | Independent release cycles and version history per product |
+| `KnowledgeArticle` | Optional (productId) | Can be product-specific or general (null productId) |
+| `SupportTeam` | Optional (productId) | 1:1 with product; tickets auto-route to the product's team |
+| `SupportTicket` | Optional (productId) | Customer selects product when filing; used for team routing |
+| `CustomerLogoPlacement` | Optional (productId) | Logos placed on landing page (null) or specific product pages |
+| `TestimonialPlacement` | Optional (productId) | Testimonials placed on landing page (null) or product pages |
+| `ContactSubmission` | Optional (productId) | Contact form can reference a specific product |
+
+### Product Activation Strategy
+
+The `Product.activationStrategy` enum controls whether licences for that product generate activation codes:
+
+- `none` — No activation codes (simple subscription access)
+- `mojo_ppm_hmac` — HMAC-SHA256 activation codes for product app integration
+
+This is checked when generating activation codes: if the product's strategy is `none`, the activation endpoint returns an error. This allows some products to use licence-based activation (desktop apps) while others use simple subscription access (web tools).

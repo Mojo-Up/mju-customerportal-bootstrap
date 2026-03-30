@@ -189,6 +189,44 @@ Generate a summary:
 - ✅ Build verification (pass/fail per check)
 - ⚠️ Manual steps remaining (Entra app registration, Stripe setup, ACS setup, DNS records, logo replacement, cron scheduler)
 - 📋 First deployment checklist
+- 💰 Estimated infrastructure costs (see below)
+
+### Estimated Azure Infrastructure Costs
+
+Present the following cost estimate based on the deployed Azure resources. Costs are for a **single environment** (production). Adjust for dev/staging which may use cheaper SKUs or scale-to-zero.
+
+**Important**: These are estimates based on Azure Australia East pricing as of 2026. Actual costs vary by region, reserved instance discounts, and usage patterns. Use the [Azure Pricing Calculator](https://azure.microsoft.com/en-au/pricing/calculator/) for precise quotes.
+
+#### Resource Cost Breakdown
+
+| Resource | SKU / Tier | Estimated Monthly Cost | Notes |
+|----------|-----------|----------------------|-------|
+| **PostgreSQL Flexible Server** | Burstable B1ms (1 vCPU, 2GB RAM, 32GB storage) | ~AU$25–35 | Largest fixed cost; can scale down in dev |
+| **Container Apps – API** | 0.5 vCPU / 1GB, 1–3 replicas | ~AU$25–50 | Consumption plan; pay per active vCPU-second |
+| **Container Apps – Portal** | 0.25 vCPU / 0.5GB, 1–2 replicas | ~AU$10–20 | Serves static files; low CPU |
+| **Container Apps – MCP** | 0.25 vCPU / 0.5GB, 0–2 replicas | ~AU$0–15 | Scales to zero when idle |
+| **Container Apps Environment** | — | ~AU$0 | No additional charge (included) |
+| **Container Registry** | Basic | ~AU$7 | Image storage |
+| **Storage Account** | Standard ZRS | ~AU$1–5 | Depends on blob volume |
+| **Log Analytics** | PerGB2018 (90-day retention) | ~AU$3–10 | Depends on log volume |
+| **Azure Communication Services** | Pay-per-use | ~AU$0–5 | ~AU$0.0035/email |
+| **Managed Certificates** | — | Free | Auto-renewed TLS certs |
+
+#### Summary Estimates
+
+| Scenario | Daily Estimate | Monthly Estimate |
+|----------|---------------|-----------------|
+| **Minimal (dev)** — MCP scaled to zero, 1 replica each, low traffic | ~AU$2.50 | ~AU$75 |
+| **Typical (production)** — Normal traffic, 1–2 API replicas, MCP idle | ~AU$3.50 | ~AU$105 |
+| **Active (production)** — Higher traffic, 2–3 API replicas, MCP active, email sending | ~AU$5.50 | ~AU$165 |
+
+#### Cost Optimisation Tips
+
+- **Dev environment**: Use scale-to-zero for all Container Apps, smaller PostgreSQL SKU (B_Standard_B1ms)
+- **Reserved capacity**: PostgreSQL 1-year reserved instance saves ~35%
+- **MCP scale-to-zero**: When `minReplicas: 0`, MCP costs nothing when idle (cold start ~2s)
+- **Log retention**: Reduce from 90 to 30 days in non-production environments
+- **Single environment**: For small teams, dev can be docker-compose local only (zero Azure cost)
 
 ## Feature Toggles
 

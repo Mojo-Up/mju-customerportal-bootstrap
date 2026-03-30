@@ -298,10 +298,13 @@ Pass org metadata so the webhook handler can link the subscription:
 const session = await stripe.checkout.sessions.create({
   mode: 'subscription',
   customer: org.stripeCustomerId,
-  line_items: [{ price: stripePriceId, quantity: 1 }],
-  metadata: { orgId, subscriptionId: newSubId },
+  line_items: [{ price: pricingPlan.stripePriceId, quantity: 1 }],
+  metadata: { orgId, productId, pricingPlanId, plan: pricingPlan.interval },
+  subscription_data: {
+    metadata: { orgId, productId, pricingPlanId, plan: pricingPlan.interval },
+  },
   success_url: `${config.portalUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
-  cancel_url: `${config.portalUrl}/pricing`,
+  cancel_url: `${config.portalUrl}/products/${pricingPlan.product.slug}`,
 });
 ```
 
@@ -477,16 +480,30 @@ email: {
 
 ### Existing Templates
 
-| Function | Trigger | Recipients |
-| -------- | ------- | ---------- |
-| `sendOrgInvitation` | User invited to org | Invitee |
-| `sendTicketReplyNotification` | Staff replies to ticket | Ticket creator |
-| `sendTicketCreatedNotification` | Customer creates ticket | Escalation contacts |
-| `sendTicketAssignedNotification` | Ticket assigned | Assigned staff |
-| `sendContactFormNotification` | Contact form submitted | Staff recipients |
-| `sendSlaWarningNotification` | SLA approaching breach (cron) | Escalation + assignee |
-| `sendSlaBreachNotification` | SLA breached (cron) | Escalation + assignee |
-| `sendVersionReleaseNotification` | New product version (cron) | Licensed users |
+All email templates include deep links to the portal using `config.portalUrl`. These links must match React Router routes in the portal SPA.
+
+| Function | Trigger | Recipients | Deep Link |
+| -------- | ------- | ---------- | --------- |
+| `sendOrgInvitation` | User invited to org | Invitee | `${portalUrl}/accept-invite/${token}` |
+| `sendTicketReplyNotification` | Staff replies to ticket | Ticket creator | `${portalUrl}/support/${ticketId}` |
+| `sendTicketCreatedNotification` | Customer creates ticket | Escalation contacts | `${portalUrl}/admin/support/tickets/${ticketId}` |
+| `sendTicketAssignedNotification` | Ticket assigned | Assigned staff | `${portalUrl}/admin/support/tickets/${ticketId}` |
+| `sendContactFormNotification` | Contact form submitted | Staff recipients | *(no deep link)* |
+| `sendSlaWarningNotification` | SLA approaching breach (cron) | Escalation + assignee | `${portalUrl}/admin/support/tickets/${ticketId}` |
+| `sendSlaBreachNotification` | SLA breached (cron) | Escalation + assignee | `${portalUrl}/admin/support/tickets/${ticketId}` |
+| `sendVersionReleaseNotification` | New product version (cron) | Licensed users | `${portalUrl}/downloads` |
+
+### Stripe Redirect URLs
+
+These are set in the API and must also match portal routes:
+
+| Flow | URL Pattern | Portal Route |
+|------|------------|--------------|
+| Checkout Success | `${portalUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}` | `/checkout/success` |
+| Checkout Cancel | `${portalUrl}/products/${slug}` | `/products/:slug` |
+| Billing Portal Return | `${portalUrl}/billing` | `/billing` |
+
+**Critical**: When adding new deep links, ensure the target path exists in `packages/portal/src/App.tsx` routes. Customer-facing links go to `/support/...` routes; staff links go to `/admin/support/...` routes.
 
 ## Cron / Scheduled Jobs Pattern
 
